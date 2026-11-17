@@ -1,0 +1,2181 @@
+﻿<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>AI Slop Remover</title>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  :root {
+    --bg: #0f0f17;
+    --surface: #1a1a28;
+    --border: #2e2e45;
+    --accent: #a855f7;
+    --accent2: #ec4899;
+    --red: #ff4d6d;
+    --green: #10d98a;
+    --yellow: #f59e0b;
+    --text: #e2e2f0;
+    --muted: #8888aa;
+    --radius: 12px;
+  }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'Inter', system-ui, sans-serif;
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+  }
+
+  header {
+    padding: 20px 32px 14px;
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    align-items: baseline;
+    gap: 16px;
+  }
+
+  header h1 {
+    font-size: 1.4rem;
+    font-weight: 700;
+    background: linear-gradient(90deg, var(--accent), var(--accent2));
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+  }
+
+  header p { color: var(--muted); font-size: 0.85rem; }
+
+  .main { flex: 1; display: flex; flex-direction: column; padding: 20px 32px; gap: 14px; }
+
+  .panels { display: grid; grid-template-columns: 1fr auto 1fr; gap: 16px; flex: 1; }
+
+  .panel { display: flex; flex-direction: column; gap: 8px; }
+
+  .panel-header { display: flex; justify-content: space-between; align-items: center; }
+
+  .panel-label {
+    font-size: 0.78rem; font-weight: 600;
+    text-transform: uppercase; letter-spacing: 0.08em; color: var(--muted);
+  }
+
+  .badge {
+    font-size: 0.75rem; padding: 3px 10px;
+    border-radius: 99px; font-weight: 600;
+  }
+  .badge-red    { background: rgba(255,77,109,0.15); color: var(--red); }
+  .badge-green  { background: rgba(16,217,138,0.15); color: var(--green); }
+  .badge-hidden { visibility: hidden; }
+
+  textarea {
+    flex: 1; width: 100%; min-height: 400px;
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: var(--radius); color: var(--text);
+    font-family: 'Inter', system-ui, sans-serif;
+    font-size: 0.92rem; line-height: 1.65; padding: 16px;
+    resize: vertical; outline: none; transition: border-color 0.2s;
+  }
+  textarea:focus { border-color: var(--accent); }
+  textarea[readonly] { color: #c8c8e8; cursor: default; }
+
+  .center-col {
+    display: flex; flex-direction: column;
+    align-items: center; justify-content: center;
+    gap: 10px; padding-top: 26px;
+  }
+
+  .btn-clean {
+    background: linear-gradient(135deg, var(--accent), var(--accent2));
+    border: none; border-radius: 10px; color: #fff; cursor: pointer;
+    font-size: 0.9rem; font-weight: 700; padding: 12px 20px;
+    white-space: nowrap; transition: opacity 0.15s, transform 0.1s;
+  }
+  .btn-clean:hover { opacity: 0.88; transform: translateY(-1px); }
+  .btn-clean:active { transform: translateY(0); }
+
+  .btn-copy {
+    background: none; border: 1px solid var(--border); border-radius: 8px;
+    color: var(--muted); cursor: pointer; font-size: 0.78rem; padding: 6px 12px;
+    transition: border-color 0.2s, color 0.2s;
+  }
+  .btn-copy:hover { border-color: var(--accent); color: var(--accent); }
+
+  .btn-clear {
+    background: none; border: none; color: var(--muted);
+    cursor: pointer; font-size: 0.78rem; padding: 4px 8px; border-radius: 6px;
+  }
+  .btn-clear:hover { color: var(--red); }
+
+  .stats {
+    display: flex; flex-wrap: wrap; gap: 20px;
+    padding: 12px 0 0; border-top: 1px solid var(--border);
+  }
+
+  .stat { display: flex; flex-direction: column; gap: 2px; }
+
+  .stat-val {
+    font-size: 1.15rem; font-weight: 700;
+    font-variant-numeric: tabular-nums;
+  }
+  .stat-label { font-size: 0.72rem; color: var(--muted); text-transform: uppercase; letter-spacing: 0.06em; }
+
+  .stat-val.red    { color: var(--red); }
+  .stat-val.green  { color: var(--green); }
+  .stat-val.yellow { color: var(--yellow); }
+  .stat-val.accent { color: var(--accent); }
+
+  .flesh-bar {
+    display: flex; align-items: center; gap: 8px; margin-top: 2px;
+  }
+  .flesh-track {
+    width: 80px; height: 6px; background: var(--border);
+    border-radius: 99px; overflow: hidden;
+  }
+  .flesh-fill {
+    height: 100%; border-radius: 99px;
+    transition: width 0.4s, background 0.4s;
+  }
+
+  .highlight-toggle {
+    display: flex; align-items: center; gap: 8px;
+    font-size: 0.8rem; color: var(--muted); cursor: pointer; user-select: none;
+  }
+  .highlight-toggle input[type=checkbox] { accent-color: var(--accent); }
+
+  .preview-box {
+    display: none; flex: 1; min-height: 400px;
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: var(--radius); padding: 16px;
+    font-size: 0.92rem; line-height: 1.65; overflow-y: auto;
+    white-space: pre-wrap; word-break: break-word;
+  }
+  .preview-box mark {
+    background: rgba(255,77,109,0.25); color: var(--red);
+    border-radius: 3px; padding: 0 2px;
+  }
+
+  /* Output diff display */
+  .output-display {
+    flex: 1; min-height: 400px;
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: var(--radius); padding: 16px;
+    font-size: 0.92rem; line-height: 1.75; overflow-y: auto;
+    white-space: pre-wrap; word-break: break-word;
+    color: var(--text);
+  }
+  .output-display:empty::before {
+    content: 'Cleaned text will appear here…';
+    color: var(--muted);
+  }
+  .diff-del {
+    background: rgba(255,77,109,0.18);
+    color: var(--red);
+    text-decoration: line-through;
+    border-radius: 3px;
+    padding: 0 2px;
+  }
+  .diff-add {
+    background: rgba(16,217,138,0.15);
+    color: var(--green);
+    border-radius: 3px;
+    padding: 0 2px;
+  }
+
+  .found-list {
+    display: none; margin-top: 4px; padding: 10px 14px;
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: var(--radius); font-size: 0.8rem;
+    line-height: 1.8; color: var(--muted);
+    max-height: 120px; overflow-y: auto;
+  }
+  .found-list span {
+    display: inline-block;
+    background: rgba(255,77,109,0.12); color: var(--red);
+    border-radius: 4px; padding: 1px 8px;
+    margin: 2px 4px 2px 0; font-weight: 500;
+  }
+
+  .divider { width: 1px; height: 28px; background: var(--border); }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>AI Slop Remover</h1>
+  <p>Paste text → get direct, human prose back</p>
+</header>
+
+<div class="main">
+  <div class="panels">
+
+    <!-- INPUT -->
+    <div class="panel">
+      <div class="panel-header">
+        <span class="panel-label">Input</span>
+        <div style="display:flex;gap:8px;align-items:center;">
+          <span id="badge-slop" class="badge badge-red badge-hidden">0 slop</span>
+          <button class="btn-clear" onclick="clearAll()">✕ clear</button>
+        </div>
+      </div>
+      <textarea id="input" placeholder="Paste your AI-generated text here…" oninput="onInput()"></textarea>
+      <label class="highlight-toggle">
+        <input type="checkbox" id="highlight-toggle" onchange="toggleHighlight()">
+        Highlight slop phrases
+      </label>
+      <div id="preview-in" class="preview-box"></div>
+      <div id="found-list" class="found-list"></div>
+    </div>
+
+    <!-- CENTER -->
+    <div class="center-col">
+      <button class="btn-clean" onclick="clean()">Clean It →</button>
+    </div>
+
+    <!-- OUTPUT -->
+    <div class="panel">
+      <div class="panel-header">
+        <span class="panel-label">Output</span>
+        <div style="display:flex;gap:8px;align-items:center;">
+          <span id="badge-clean" class="badge badge-green badge-hidden">0 fixed</span>
+          <label class="highlight-toggle" style="margin:0;">
+            <input type="checkbox" id="diff-toggle" checked onchange="toggleDiff()">
+            Show changes
+          </label>
+          <button class="btn-copy" onclick="copyOutput()">Copy</button>
+        </div>
+      </div>
+      <div id="output-display" class="output-display"></div>
+      <textarea id="output" style="display:none;" readonly></textarea>
+    </div>
+
+  </div>
+
+  <div class="stats">
+    <div class="stat">
+      <span id="stat-in-words" class="stat-val accent">—</span>
+      <span class="stat-label">Input words</span>
+    </div>
+    <div class="stat">
+      <span id="stat-out-words" class="stat-val accent">—</span>
+      <span class="stat-label">Output words</span>
+    </div>
+    <div class="stat">
+      <span id="stat-slop" class="stat-val red">—</span>
+      <span class="stat-label">Slop removed</span>
+    </div>
+    <div class="stat">
+      <span id="stat-format" class="stat-val green">—</span>
+      <span class="stat-label">Emoji &amp; dashes stripped</span>
+    </div>
+    <div class="stat">
+      <span id="stat-contractions" class="stat-val green">—</span>
+      <span class="stat-label">Contractions added</span>
+    </div>
+    <div class="stat">
+      <span id="stat-bloat" class="stat-val green">—</span>
+      <span class="stat-label">Bloat phrases cut</span>
+    </div>
+    <div class="stat">
+      <span id="stat-splits" class="stat-val green">—</span>
+      <span class="stat-label">Sentences split</span>
+    </div>
+    <div class="stat">
+      <span id="stat-intensifiers" class="stat-val green">—</span>
+      <span class="stat-label">Intensifiers stripped</span>
+    </div>
+    <div class="stat">
+      <div class="flesh-bar">
+        <span id="stat-flesch" class="stat-val yellow">—</span>
+        <div class="flesh-track"><div id="flesch-fill" class="flesh-fill" style="width:0%"></div></div>
+      </div>
+      <span class="stat-label">Flesch score (target ≥60)</span>
+    </div>
+  </div>
+</div>
+
+<script>
+'use strict';
+
+// ═══════════════════════════════════════════════════════
+// 1. SLOP RULES  — buzzwords, filler, sycophancy
+// ═══════════════════════════════════════════════════════
+const SLOP_RULES = [
+
+  // Sycophantic openers
+  { label: "Certainly!",          pattern: /\bCertainly[!,]?\s*/gi,                    r: "" },
+  { label: "Absolutely!",         pattern: /\bAbsolutely[!,]?\s*/gi,                   r: "" },
+  { label: "Of course!",          pattern: /\bOf course[!,]?\s*/gi,                    r: "" },
+  { label: "Sure,",               pattern: /\bSure[!,]\s*/gi,                          r: "" },
+  { label: "Great question",      pattern: /\bGreat question[!.]?\s*/gi,               r: "" },
+  { label: "Excellent question",  pattern: /\bExcellent question[!.]?\s*/gi,            r: "" },
+  { label: "Good question",       pattern: /\bGood question[!.]?\s*/gi,                r: "" },
+  { label: "I'd be happy to",     pattern: /\bI'?d be (happy|glad) to\b/gi,            r: "I would be pleased to" },
+  { label: "I'd love to help",    pattern: /\bI'?d love to help\b/gi,                  r: "" },
+  { label: "I'm here to help",    pattern: /\bI'?m here to help\b/gi,                  r: "" },
+  { label: "As an AI",            pattern: /\bAs an AI( language model)?,?\s*/gi,       r: "" },
+  { label: "As a language model", pattern: /\bAs a language model,?\s*/gi,             r: "" },
+
+  // Filler transitions
+  { label: "In conclusion",       pattern: /\bIn conclusion[,:]?\s*/gi,                r: "" },
+  { label: "In summary",          pattern: /\bIn summary[,:]?\s*/gi,                   r: "" },
+  { label: "To summarize",        pattern: /\bTo summarize[,:]?\s*/gi,                 r: "" },
+  { label: "To conclude",         pattern: /\bTo conclude[,:]?\s*/gi,                  r: "" },
+  { label: "In essence",          pattern: /\bIn essence[,:]?\s*/gi,                   r: "" },
+  { label: "Furthermore",         pattern: /\bFurthermore[,:]?\s*/gi,                  r: "" },
+  { label: "Moreover",            pattern: /\bMoreover[,:]?\s*/gi,                     r: "" },
+  { label: "Additionally",        pattern: /\bAdditionally[,:]?\s*/gi,                 r: "" },
+  { label: "Having said that",    pattern: /\bHaving said that[,.]?\s*/gi,             r: "" },
+  { label: "That being said",     pattern: /\bThat being said[,.]?\s*/gi,              r: "" },
+  { label: "With that in mind",   pattern: /\bWith that in mind[,.]?\s*/gi,            r: "" },
+  { label: "All things considered",pattern: /\bAll things considered[,.]?\s*/gi,       r: "" },
+  { label: "At the end of the day",pattern: /\bAt the end of the day[,.]?\s*/gi,       r: "" },
+  { label: "Needless to say",     pattern: /\bNeedless to say[,.]?\s*/gi,              r: "" },
+  { label: "It goes without saying",pattern:/\bIt goes without saying (that )?/gi,     r: "" },
+  { label: "It is worth noting",  pattern: /\bIt(?:'s| is) worth noting that\s*/gi,    r: "" },
+  { label: "It is important to note",pattern:/\bIt(?:'s| is) important to note that\s*/gi, r: "" },
+  { label: "It is crucial to note",pattern:/\bIt(?:'s| is) crucial to note that\s*/gi,r: "" },
+  { label: "Please note that",    pattern: /\bPlease note that\s*/gi,                  r: "" },
+  { label: "Note that",           pattern: /\bNote that\s*/gi,                         r: "" },
+  { label: "It should be noted",  pattern: /\bIt should be noted that\s*/gi,           r: "" },
+  { label: "Ultimately",          pattern: /\bUltimately[,.]?\s*/gi,                   r: "" },
+  { label: "As a matter of fact", pattern: /\bAs a matter of fact[,.]?\s*/gi,          r: "" },
+
+  // Padding / hedging
+  { label: "I must emphasize",    pattern: /\bI must emphasize\s*/gi,                  r: "" },
+  { label: "I cannot stress enough",pattern:/\bI cannot stress (this )?enough[,:]?\s*/gi, r: "" },
+  { label: "Rest assured",        pattern: /\bRest assured[,.]?\s*/gi,                 r: "" },
+  { label: "Look no further",     pattern: /\blook no further\b/gi,                    r: "look here" },
+  { label: "the perfect solution", pattern: /\bthe perfect solution\b/gi,              r: "a solution" },
+  { label: "the ultimate guide",  pattern: /\bthe ultimate guide\b/gi,                 r: "a guide" },
+  { label: "the definitive guide",pattern: /\bthe definitive guide\b/gi,               r: "a guide" },
+  { label: "it is crucial to",    pattern: /\bit(?:'s| is) crucial to\b/gi,            r: "it is important to" },
+  { label: "it is essential to",  pattern: /\bit(?:'s| is) essential to\b/gi,          r: "it is important to" },
+  { label: "it is vital to",      pattern: /\bit(?:'s| is) vital to\b/gi,              r: "it is important to" },
+  { label: "it is necessary to",  pattern: /\bit(?:'s| is) necessary to\b/gi,          r: "it is important to" },
+  { label: "the fact that",       pattern: /\bthe fact that\b/gi,                      r: "that" },
+
+  // Buzzwords
+  { label: "delve into",          pattern: /\bdelve into\b/gi,                         r: "examine" },
+  { label: "dive deep into",      pattern: /\bdive deeply? into\b/gi,                  r: "examine" },
+  { label: "dive into",           pattern: /\bdive into\b/gi,                          r: "look at" },
+  { label: "deep dive",           pattern: /\bdeep[- ]dive(s|d|ing)?\b/gi,             r: "detailed look" },
+  { label: "leverage",            pattern: /\bleverag(e|ing|ed)\b(?! ratio| buyout| effect)/gi,
+                                    r: (m) => m.endsWith('ing') ? "using" : m.endsWith('ed') ? "used" : "use" },
+  { label: "harness",             pattern: /\bharness(es|ed|ing)?\b/gi,                r: "use" },
+  { label: "seamlessly",          pattern: /\bseamlessly\b/gi,                         r: "" },
+  { label: "seamless",            pattern: /\bseamless\b/gi,                           r: "smooth" },
+  { label: "robust",              pattern: /\brobust\b/gi,                             r: "reliable" },
+  { label: "comprehensive",       pattern: /\bcomprehensive\b/gi,                      r: "complete" },
+  { label: "cutting-edge",        pattern: /\bcutting[- ]edge\b/gi,                    r: "latest" },
+  { label: "state-of-the-art",    pattern: /\bstate[- ]of[- ]the[- ]art\b/gi,          r: "current" },
+  { label: "bleeding-edge",       pattern: /\bbleeding[- ]edge\b/gi,                   r: "latest" },
+  { label: "unprecedented",       pattern: /\bunprecedented\b/gi,                      r: "new" },
+  { label: "revolutionize",       pattern: /\brevolutioniz(e|es|ed|ing)\b/gi,
+                                    r: (m) => m.endsWith('ing') ? "changing" : m.endsWith('ed') ? "changed" : "change" },
+  { label: "game-changer",        pattern: /\bgame[- ]chang(er|ing)\b/gi,              r: "major shift" },
+  { label: "paradigm shift",      pattern: /\bparadigm shift\b/gi,                     r: "major change" },
+  { label: "paradigm",            pattern: /\bparadigm\b/gi,                           r: "model" },
+  { label: "synergy",             pattern: /\bsynerg(y|ies|istic)\b/gi,                r: "combined effect" },
+  { label: "empower",             pattern: /\bempower(s|ed|ing)?\b/gi,
+                                    r: (m) => m.endsWith('ing') ? "enabling" : m.endsWith('ed') ? "enabled" : m.endsWith('s') ? "enables" : "enable" },
+  { label: "unleash",             pattern: /\bunleash(es|ed|ing)?\b/gi,                r: "release" },
+  { label: "elevate",             pattern: /\belevat(e|es|ed|ing)\b/gi,
+                                    r: (m) => m.endsWith('ing') ? "improving" : m.endsWith('ed') ? "improved" : "improve" },
+  { label: "transformative",      pattern: /\btransformative\b/gi,                     r: "significant" },
+  { label: "innovative solution", pattern: /\binnovative solution(s)?\b/gi,            r: "solution" },
+  { label: "innovative",          pattern: /\binnovative\b/gi,                         r: "new" },
+  { label: "innovation",          pattern: /\binnovation\b/gi,                         r: "improvement" },
+  { label: "streamline",          pattern: /\bstreamlin(e|es|ed|ing)\b/gi,
+                                    r: (m) => m.endsWith('ing') ? "simplifying" : m.endsWith('ed') ? "simplified" : "simplify" },
+  { label: "thought leadership",  pattern: /\bthought leaders?hip\b/gi,                r: "expertise" },
+  { label: "thought leader",      pattern: /\bthought leaders?\b/gi,                   r: "expert" },
+  { label: "best-in-class",       pattern: /\bbest[- ]in[- ]class\b/gi,                r: "top" },
+  { label: "world-class",         pattern: /\bworld[- ]class\b/gi,                     r: "excellent" },
+  { label: "next-generation",     pattern: /\bnext[- ]gen(eration)?\b/gi,              r: "new" },
+  { label: "future-proof",        pattern: /\bfuture[- ]proof(ing|ed)?\b/gi,           r: "durable" },
+  { label: "user-friendly",       pattern: /\buser[- ]friendly\b/gi,                   r: "easy to use" },
+  { label: "value-added",         pattern: /\bvalue[- ]add(ed|s)?\b/gi,                r: "useful" },
+  { label: "mission-critical",    pattern: /\bmission[- ]critical\b/gi,                r: "critical" },
+  { label: "at your fingertips",  pattern: /\bat (your|their|our) fingertips\b/gi,     r: "available" },
+  { label: "out of the box",      pattern: /\bout[- ]of[- ]the[- ]box\b/gi,            r: "by default" },
+  { label: "multifaceted",        pattern: /\bmultifaceted\b/gi,                       r: "varied" },
+  { label: "nuanced",             pattern: /\bnuanced\b/gi,                            r: "detailed" },
+  { label: "disruptive",          pattern: /\bdisruptive\b/gi,                         r: "different" },
+  { label: "disrupt",             pattern: /\bdisrupt(s|ed|ing)?\b/gi,                 r: "change" },
+  { label: "scalable solution",   pattern: /\bscalable solution(s)?\b/gi,              r: "solution" },
+  { label: "ever-evolving",       pattern: /\bever[- ]evolving\b/gi,                   r: "changing" },
+  { label: "ever-changing",       pattern: /\bever[- ]changing\b/gi,                   r: "changing" },
+  { label: "fast-paced world",    pattern: /\bin today'?s fast[- ]paced world[,.]?\s*/gi, r: "" },
+  { label: "ever-changing landscape",pattern:/\bin today'?s ever[- ]changing landscape[,.]?\s*/gi, r: "" },
+  { label: "in today's world",    pattern: /\bin today'?s world[,.]?\s*/gi,            r: "" },
+  { label: "in the modern era",   pattern: /\bin (the )?(modern|current) (era|age|world)[,.]?\s*/gi, r: "" },
+  { label: "rapidly evolving",    pattern: /\brapidly evolving\b/gi,                   r: "changing" },
+  { label: "landscape",           pattern: /\blandscape\b(?= of| for| in)/gi,          r: "field" },
+  { label: "ecosystem",           pattern: /\becosystem\b(?! (of species|service|restoration))/gi, r: "environment" },
+  { label: "unpack",              pattern: /\bunpack(s|ed|ing)?\b(?= (the|this|how|what|why))/gi, r: "explain" },
+  { label: "explore and discover",pattern: /\bexplore and (discover|understand|uncover)\b/gi, r: "examine" },
+  { label: "journey (metaphor)",  pattern: /\bjourney (of|to|toward|into)\b/gi,        r: "path $1" },
+  { label: "navigate the complex",pattern: /\bnavigate the (complex|challenging|ever)/gi, r: "handle the" },
+  { label: "unlock potential",    pattern: /\bunlock (your|the|its|our|their) (true |full )?potential\b/gi, r: "reach your potential" },
+  { label: "unlock opportunities",pattern: /\bunlock (new )?(opportunities|possibilities|capabilities)\b/gi, r: "find $1$2" },
+];
+
+// ═══════════════════════════════════════════════════════
+// 2. BLOAT RULES  — verbosity, passive voice, auxiliary bloat
+//    These run in a second pass labelled separately for stats
+// ═══════════════════════════════════════════════════════
+const BLOAT_RULES = [
+
+  // Nominalization → verb
+  { label: "make a decision",       pattern: /\bmake a decision\b/gi,                          r: "decide" },
+  { label: "make an improvement",   pattern: /\bmake (an? )?improvements?\b/gi,                r: "improve" },
+  { label: "make a suggestion",     pattern: /\bmake a suggestion\b/gi,                        r: "suggest" },
+  { label: "make an attempt",       pattern: /\bmake an attempt\b/gi,                          r: "try" },
+  { label: "make use of",           pattern: /\bmake use of\b/gi,                              r: "use" },
+  { label: "provide an explanation",pattern: /\bprovide an explanation\b/gi,                   r: "explain" },
+  { label: "give a description",    pattern: /\bgive a description\b/gi,                       r: "describe" },
+  { label: "reach a conclusion",    pattern: /\breach a conclusion\b/gi,                       r: "conclude" },
+  { label: "take into consideration",pattern:/\btake (it )?into consideration\b/gi,            r: "consider" },
+  { label: "have an impact on",     pattern: /\bhave an impact on\b/gi,                        r: "affect" },
+  { label: "come to an agreement",  pattern: /\bcome to an agreement\b/gi,                     r: "agree" },
+  { label: "perform an analysis",   pattern: /\bperform an analysis\b/gi,                      r: "analyze" },
+  { label: "give a recommendation", pattern: /\bgive a recommendation\b/gi,                    r: "recommend" },
+  { label: "conduct an investigation",pattern:/\bconduct an investigation\b/gi,                r: "investigate" },
+  { label: "offer a solution",      pattern: /\boffer a solution\b/gi,                         r: "solve" },
+
+  // Auxiliary / prepositional bloat
+  { label: "in order to",           pattern: /\bin order to\b/gi,                              r: "to" },
+  { label: "due to the fact that",  pattern: /\bdue to the fact that\b/gi,                     r: "because" },
+  { label: "in spite of the fact that", pattern: /\bin spite of the fact that\b/gi,            r: "even though" },
+  { label: "on the basis of",       pattern: /\bon the basis of\b/gi,                          r: "based on" },
+  { label: "at this point in time", pattern: /\bat this point in time\b/gi,                    r: "now" },
+  { label: "in the near future",    pattern: /\bin the near future\b/gi,                       r: "soon" },
+  { label: "in the process of",     pattern: /\bin the process of\b/gi,                        r: "currently" },
+  { label: "for the purpose of",    pattern: /\bfor the purpose of\b/gi,                       r: "to" },
+  { label: "with the exception of", pattern: /\bwith the exception of\b/gi,                    r: "except" },
+  { label: "on a regular basis",    pattern: /\bon a regular basis\b/gi,                       r: "regularly" },
+  { label: "in a timely manner",    pattern: /\bin a timely manner\b/gi,                       r: "promptly" },
+  { label: "at the present time",   pattern: /\bat the present time\b/gi,                      r: "now" },
+  { label: "the majority of",       pattern: /\bthe majority of\b/gi,                          r: "most of" },
+  { label: "a large number of",     pattern: /\ba large number of\b/gi,                        r: "many" },
+  { label: "a small number of",     pattern: /\ba small number of\b/gi,                        r: "a few" },
+  { label: "in close proximity to", pattern: /\bin close proximity to\b/gi,                    r: "near" },
+  { label: "prior to",              pattern: /\bprior to\b/gi,                                 r: "before" },
+  { label: "subsequent to",         pattern: /\bsubsequent to\b/gi,                            r: "after" },
+  { label: "in lieu of",            pattern: /\bin lieu of\b/gi,                               r: "instead of" },
+  { label: "with regard to",        pattern: /\bwith regard to\b/gi,                           r: "about" },
+  { label: "in terms of",           pattern: /\bin terms of\b/gi,                              r: "for" },
+  { label: "as a result of",        pattern: /\bas a result of\b/gi,                           r: "because of" },
+  { label: "on the other hand",     pattern: /\bon the other hand[,]?\s*/gi,                   r: "However, " },
+  { label: "on the contrary",       pattern: /\bon the contrary[,]?\s*/gi,                     r: "In contrast, " },
+  { label: "moving forward",        pattern: /\bmoving forward[,]?\s*/gi,                      r: "" },
+  { label: "going forward",         pattern: /\bgoing forward[,]?\s*/gi,                       r: "" },
+  { label: "it is possible to",     pattern: /\bit is possible to\b/gi,                        r: "you can" },
+  { label: "there is a need to",    pattern: /\bthere is a need to\b/gi,                       r: "you need to" },
+  { label: "in the event that",     pattern: /\bin the event that\b/gi,                        r: "if" },
+  { label: "will be able to",       pattern: /\bwill be able to\b/gi,                          r: "can" },
+  { label: "is able to",            pattern: /\bis able to\b/gi,                               r: "can" },
+  { label: "are able to",           pattern: /\bare able to\b/gi,                              r: "can" },
+  { label: "was able to",           pattern: /\bwas able to\b/gi,                              r: "could" },
+  { label: "would be able to",      pattern: /\bwould be able to\b/gi,                         r: "could" },
+  { label: "approximately",         pattern: /\bapproximately\b/gi,                            r: "about" },
+  { label: "sufficient",            pattern: /\bsufficient\b/gi,                               r: "enough" },
+  { label: "numerous",              pattern: /\bnumerous\b/gi,                                  r: "many" },
+  { label: "utilize",               pattern: /\butiliz(e|es|ed|ing)\b/gi,
+                                      r: (m) => m.endsWith('ing') ? "using" : m.endsWith('ed') ? "used" : m.endsWith('es') ? "uses" : "use" },
+  { label: "assist",                pattern: /\bassist(s|ed|ing|ance)?\b/gi,
+                                      r: (m) => /ance/.test(m) ? "help" : m.endsWith('ing') ? "helping" : m.endsWith('ed') ? "helped" : m.endsWith('s') ? "helps" : "help" },
+  { label: "facilitate",            pattern: /\bfacilitat(e|es|ed|ing)\b/gi,
+                                      r: (m) => m.endsWith('ing') ? "helping" : m.endsWith('ed') ? "helped" : "help" },
+  { label: "demonstrate",           pattern: /\b(demonstrat(?:e|es|ed|ing))\b(?=\s+(?:that|how|why|what|whether)\b)/gi,
+                                      r: (m) => m.endsWith('ing') ? "showing" : m.endsWith('ed') ? "showed" : m.endsWith('es') ? "shows" : "show" },
+  { label: "indicate",              pattern: /\bindicat(e|es|ed|ing)\b/gi,
+                                      r: (m) => m.endsWith('ing') ? "suggesting" : m.endsWith('ed') ? "suggested" : m.endsWith('es') ? "suggests" : "suggest" },
+  { label: "commence",              pattern: /\bcommenc(e|es|ed|ing)\b/gi,
+                                      r: (m) => m.endsWith('ing') ? "starting" : m.endsWith('ed') ? "started" : m.endsWith('es') ? "starts" : "start" },
+  { label: "terminate",             pattern: /\bterminat(e|es|ed|ing)\b/gi,
+                                      r: (m) => m.endsWith('ing') ? "ending" : m.endsWith('ed') ? "ended" : m.endsWith('es') ? "ends" : "end" },
+  { label: "attempt (verb)",        pattern: /\battempt(s|ed|ing)?\b/gi,
+                                      r: (m) => m.endsWith('ing') ? "trying" : m.endsWith('ed') ? "tried" : m.endsWith('s') ? "tries" : "try" },
+  { label: "inquire",               pattern: /\binquir(e|es|ed|ing|y)\b/gi,                    r: (m) => m },
+  { label: "obtain",                pattern: /\bobtain(s|ed|ing)?\b/gi,
+                                      r: (m) => m.endsWith('ing') ? "getting" : m.endsWith('ed') ? "got" : m.endsWith('s') ? "gets" : "get" },
+  { label: "possess",               pattern: /\bpossess(es|ed|ing)?\b/gi,
+                                      r: (m) => m.endsWith('ing') ? "having" : m.endsWith('ed') ? "had" : m.endsWith('es') ? "has" : "have" },
+  { label: "require",               pattern: /\brequir(e|es|ed|ing)\b/gi,
+                                      r: (m) => m.endsWith('ing') ? "needing" : m.endsWith('ed') ? "needed" : m.endsWith('es') ? "needs" : "need" },
+  { label: "purchase",              pattern: /\bpurchas(e|es|ed|ing)\b/gi,
+                                      r: (m) => m.endsWith('ing') ? "buying" : m.endsWith('ed') ? "bought" : m.endsWith('es') ? "buys" : "buy" },
+  { label: "ensure",                pattern: /\bensur(e|es|ed|ing)\b/gi,
+                                      r: (m) => m },
+  { label: "concerning (prep)",     pattern: /\bconcerning\b(?= (the|this|that|a |an |my|your|our))/gi, r: "about" },
+  { label: "regarding",             pattern: /\bregarding\b/gi,                                r: "about" },
+  { label: "initial",               pattern: /\binitial\b/gi,                                  r: "first" },
+  { label: "additional",            pattern: /\badditional\b/gi,                               r: "more" },
+  { label: "currently (overused)",  pattern: /\bcurrently\b/gi,                                r: "now" },
+
+  // Passive voice patterns
+  { label: "it can be seen that",   pattern: /\bit can be seen that\s*/gi,                     r: "you can see that " },
+  { label: "it has been found that",pattern: /\bit has been found that\s*/gi,                  r: "research shows " },
+  { label: "it was determined that",pattern: /\bit was determined that\s*/gi,                  r: "the result was " },
+  { label: "it is believed that",   pattern: /\bit is believed that\s*/gi,                     r: "many believe " },
+  { label: "it is recommended that",pattern: /\bit is recommended that\s*/gi,                  r: "I recommend " },
+  { label: "it was found that",     pattern: /\bit was found that\s*/gi,                       r: "the data shows " },
+  { label: "it was shown that",     pattern: /\bit was shown that\s*/gi,                       r: "the results show " },
+
+  // ── GPTZero / perplexity killers ──────────────────────────────────────────
+  // "This [verb] that" chains — AI's favourite logical connector
+  { label: "This means that",       pattern: /\bThis means that\b/gi,                          r: "This indicates that" },
+  { label: "This suggests that",    pattern: /\bThis suggests that\b/gi,                       r: "This implies that" },
+  { label: "This indicates that",   pattern: /\bThis indicates that\b/gi,                      r: "This implies that" },
+  { label: "This highlights that",  pattern: /\bThis highlights that\b/gi,                     r: "This shows that" },
+  { label: "This demonstrates that",pattern: /\bThis demonstrates that\b/gi,                   r: "This shows that" },
+  { label: "This underscores that", pattern: /\bThis underscores that\b/gi,                    r: "This confirms that" },
+  { label: "This reinforces that",  pattern: /\bThis reinforces that\b/gi,                     r: "This confirms that" },
+  { label: "This means",            pattern: /\bThis means\b/gi,                               r: "This indicates" },
+  { label: "This suggests",         pattern: /\bThis suggests\b/gi,                            r: "This implies" },
+  { label: "This indicates",        pattern: /\bThis indicates\b/gi,                           r: "This implies" },
+  { label: "This highlights",       pattern: /\bThis highlights\b/gi,                          r: "This shows" },
+  { label: "This demonstrates",     pattern: /\bThis demonstrates\b/gi,                        r: "This shows" },
+  { label: "This underscores",      pattern: /\bThis underscores\b/gi,                         r: "This confirms" },
+  { label: "This reinforces",       pattern: /\bThis reinforces\b/gi,                          r: "This confirms" },
+
+  // Openers AI uses to frame conclusions / evaluations
+  { label: "That said,",            pattern: /\bThat said[,.]?\s*/gi,                          r: "" },
+  { label: "Notably,",              pattern: /\bNotably[,:]?\s*/gi,                            r: "" },
+  { label: "Importantly,",          pattern: /\bImportantly[,:]?\s*/gi,                        r: "" },
+  { label: "Significantly,",        pattern: /\bSignificantly[,:]?\s*/gi,                      r: "" },
+  { label: "On balance,",           pattern: /\bOn balance[,.]?\s*/gi,                         r: "" },
+  { label: "To that end,",          pattern: /\bTo that end[,.]?\s*/gi,                        r: "" },
+  { label: "Broadly speaking,",     pattern: /\bBroadly speaking[,.]?\s*/gi,                   r: "" },
+  { label: "In this context,",      pattern: /\bIn this context[,.]?\s*/gi,                    r: "" },
+  { label: "When all is said and done", pattern: /\bWhen all is said and done[,.]?\s*/gi,      r: "" },
+  { label: "By and large,",         pattern: /\bBy and large[,.]?\s*/gi,                       r: "" },
+  { label: "For all intents and purposes", pattern: /\bFor all intents and purposes[,.]?\s*/gi,r: "" },
+  { label: "It stands to reason",   pattern: /\bIt stands to reason( that)?\s*/gi,             r: "" },
+  { label: "There is no denying",   pattern: /\bThere is no denying( that)?\s*/gi,             r: "" },
+  { label: "By all accounts,",      pattern: /\bBy all accounts[,.]?\s*/gi,                    r: "" },
+  { label: "Suffice it to say",     pattern: /\bSuffice it to say[,.]?\s*/gi,                  r: "" },
+
+  // Hedging phrases that scream AI caution
+  { label: "it's worth mentioning", pattern: /\bit'?s worth (mentioning|highlighting|emphasizing|considering)( that)?\s*/gi, r: "" },
+  { label: "one might argue",       pattern: /\bone might (argue|say|suggest|think)\b/gi,      r: "you could argue" },
+  { label: "one could argue",       pattern: /\bone could (argue|say|suggest)\b/gi,            r: "you could argue" },
+  { label: "it could be argued",    pattern: /\bit could be argued( that)?\s*/gi,              r: "you could argue" },
+
+  // Abstract evaluation verbs — AI rates things, humans don't
+  { label: "stands out as",         pattern: /\bstands out as\b/gi,                            r: "is" },
+  { label: "proves to be",          pattern: /\bproves to be\b/gi,                             r: "is" },
+  { label: "turns out to be",       pattern: /\bturns out to be\b/gi,                          r: "is" },
+  { label: "comes down to",         pattern: /\bcomes down to\b/gi,                            r: "is really about" },
+  { label: "boils down to",         pattern: /\bboils down to\b/gi,                            r: "is really" },
+  { label: "remains to be seen",    pattern: /\bremains to be seen\b/gi,                       r: "is unclear" },
+  { label: "serves as",             pattern: /\bserves as\b/gi,                                r: "acts as" },
+  { label: "acts as a reminder",    pattern: /\bacts as a reminder\b/gi,                       r: "reminds us" },
+
+  // Abstract nominalizations humans would never coin
+  { label: "meaningful milestone",  pattern: /\bmeaningful milestone(s)?\b/gi,                 r: "goal" },
+  { label: "key milestone",         pattern: /\bkey milestone(s)?\b/gi,                        r: "goal" },
+  { label: "growth trajectory",     pattern: /\bgrowth trajectory\b/gi,                        r: "rate of improvement" },
+  { label: "performance metrics",   pattern: /\bperformance metrics\b/gi,                      r: "performance data" },
+  { label: "key takeaway",          pattern: /\bkey takeaway(s)?\b/gi,                         r: "main point" },
+  { label: "actionable",            pattern: /\bactionable\b/gi,                               r: "practical" },
+  { label: "overall standing",      pattern: /\boverall standing\b/gi,                         r: "ranking" },
+  { label: "consistent performer",  pattern: /\bconsistent performer(s)?\b/gi,                 r: "steady" },
+  { label: "sustained effort",      pattern: /\bsustained effort\b/gi,                         r: "continued effort" },
+  { label: "notable improvement",   pattern: /\bnotable improvement(s)?\b/gi,                  r: "meaningful improvement" },
+  { label: "significant improvement",pattern:/\bsignificant improvement(s)?\b/gi,              r: "meaningful improvement" },
+  { label: "realistic timeframe",   pattern: /\brealistic timeframe\b/gi,                      r: "realistic timeline" },
+  { label: "core strength",         pattern: /\bcore strength(s)?\b/gi,                        r: "strength" },
+  { label: "strong foundation",     pattern: /\bstrong foundation\b/gi,                        r: "solid base" },
+  { label: "key factor",            pattern: /\bkey factor(s)?\b/gi,                           r: "factor" },
+  { label: "critical factor",       pattern: /\bcritical factor(s)?\b/gi,                      r: "main factor" },
+  { label: "driving force",         pattern: /\bdriving force\b/gi,                            r: "main reason" },
+  { label: "positive impact",       pattern: /\bpositive impact\b/gi,                          r: "improvement" },
+  { label: "significant impact",    pattern: /\bsignificant impact\b/gi,                       r: "real effect" },
+  { label: "overall performance",   pattern: /\boverall performance\b/gi,                      r: "performance" },
+  { label: "optimal performance",   pattern: /\boptimal performance\b/gi,                      r: "best performance" },
+  { label: "long-term success",     pattern: /\blong[- ]term success\b/gi,                     r: "success over time" },
+  { label: "overall goal",          pattern: /\boverall goal(s)?\b/gi,                         r: "goal" },
+
+  // Formal distancing — AI talks about the reader's life in third person
+  { label: "earlier estimates",     pattern: /\bearlier estimates\b/gi,                        r: "earlier projections" },
+  { label: "previous estimates",    pattern: /\bprevious estimates\b/gi,                       r: "earlier projections" },
+  { label: "current situation",     pattern: /^Current situation[:]?\s*$/gim,                  r: "Where things stand:" },
+  { label: "at this juncture",      pattern: /\bat this juncture\b/gi,                         r: "right now" },
+  { label: "in the current climate",pattern: /\bin the current climate\b/gi,                   r: "right now" },
+  { label: "your own [noun]",       pattern: /\byour own (average|pace|rate|progress|effort|performance)\b/gi,
+                                      r: (_, noun) => `your ${noun}` },
+
+  // ── AI section-header labels (short declarative lines that look like report sections) ──
+  { label: "Biggest improvement",   pattern: /^Biggest improvement in the group[:]?\s*$/gim,   r: "Biggest gain:" },
+  { label: "Biggest Stories",       pattern: /^Biggest Stories Right Now[:]?\s*$/gim,          r: "Top movers this week:" },
+  { label: "Largest decline",       pattern: /^Largest decline of any established member[:]?\s*$/gim, r: "Biggest drop:" },
+  { label: "Most Consistent",       pattern: /^Most Consistent[:]?\s*$/gim,                    r: "Most steady:" },
+  { label: "Verdict",               pattern: /^Verdict[:]?\s*$/gim,                            r: "Bottom line:" },
+
+  // ── High-frequency AI adverbs GPTZero flags ────────────────────────────────
+  { label: "effectively",           pattern: /\beffectively\b/gi,                              r: "" },
+  { label: "essentially",           pattern: /\bEssentially[,:]?\s*/gi,                        r: "" },
+  { label: "essentially (mid)",     pattern: /\bessentially\b/gi,                              r: "basically" },
+  { label: "fundamentally",         pattern: /\bfundamentally\b/gi,                            r: "at its core" },
+  { label: "inherently",            pattern: /\binherently\b/gi,                               r: "" },
+  { label: "significantly (adv)",   pattern: /\bsignificantly\b/gi,                            r: "considerably" },
+  { label: "substantially",         pattern: /\bsubstantially\b/gi,                            r: "considerably" },
+  { label: "considerably",          pattern: /\bconsiderably\b/gi,                             r: "markedly" },
+  { label: "predominantly",         pattern: /\bpredominantly\b/gi,                            r: "mostly" },
+  { label: "consistently",          pattern: /\bconsistently\b/gi,                             r: "steadily" },
+  { label: "constantly",            pattern: /\bconstantly\b/gi,                               r: "always" },
+  { label: "actively",              pattern: /\bactively\b/gi,                                 r: "" },
+  { label: "collectively",          pattern: /\bcollectively\b/gi,                             r: "together" },
+  { label: "accordingly",           pattern: /\bAccordingly[,:]?\s*/gi,                        r: "" },
+  { label: "consequently",          pattern: /\bConsequently[,:]?\s*/gi,                       r: "So" },
+  { label: "subsequently",          pattern: /\bSubsequently[,:]?\s*/gi,                       r: "Then" },
+  { label: "previously",            pattern: /\b(?:as\s+)?previously\s+(?:mentioned|discussed|noted|stated|outlined|described)\b/gi, r: "" },
+
+  // ── AI evaluation verbs / phrases GPTZero flags ───────────────────────────
+  { label: "no longer",             pattern: /\bno longer\b/gi,                                r: "no longer" },
+  { label: "is now",                pattern: /\bis now\b/gi,                                   r: "has become" },
+  { label: "has effectively",       pattern: /\bhas effectively\b/gi,                          r: "has" },
+  { label: "have effectively",      pattern: /\bhave effectively\b/gi,                         r: "have" },
+  { label: "pave the way",          pattern: /\bpave(s|d)? the way\b/gi,                       r: "open the door" },
+  { label: "lay the groundwork",    pattern: /\blay(s|ing)? the groundwork\b/gi,               r: "set things up" },
+  { label: "set the stage",         pattern: /\bset(s|ting)? the stage\b/gi,                   r: "prepare" },
+  { label: "take center stage",     pattern: /\btake(s|n)? (center|centre) stage\b/gi,         r: "stand out" },
+  { label: "play a key role",       pattern: /\bplay(s|ed|ing)? a (key|critical|crucial|vital|central|major|pivotal) role\b/gi,
+                                      r: "play an important role" },
+  { label: "a testament to",        pattern: /\ba testament to\b/gi,                           r: "proof of" },
+  { label: "speaks volumes",        pattern: /\bspeaks volumes\b/gi,                           r: "says a lot" },
+  { label: "more than ever",        pattern: /\bmore than ever\b/gi,                           r: "increasingly" },
+  { label: "now more than ever",    pattern: /\bnow more than ever[,.]?\s*/gi,                 r: "" },
+  { label: "in recent years",       pattern: /\bin recent years[,.]?\s*/gi,                    r: "" },
+  { label: "in recent months",      pattern: /\bin recent months[,.]?\s*/gi,                   r: "" },
+
+  // ── AI structural openers / closers ───────────────────────────────────────
+  { label: "At its core opener",    pattern: /^At its core,?\s+/gim,                             r: "" },
+  { label: "intentionally",         pattern: /\bintentionally\b/gi,                              r: "on purpose" },
+  { label: "purposefully",          pattern: /\bpurposefully\b/gi,                               r: "on purpose" },
+  { label: "don't just X they Y",   pattern: /\bdon'?t just [^;.]+;\s+they\s+([^.!?]+)[.!]?/gi,
+                                      r: (_, b) => `${b.trim()}.` },
+  { label: "not just X but also Y",  pattern: /\bnot just ([^,;.!?]+),?\s+but also\s+([^.!?]+)[.!]?/gi,
+                                      r: (_, a, b) => `${a.trim()} and ${b.trim()}.` },
+  { label: "closing uplift thrive", pattern: /\bpeople can (thrive|flourish|do their best work)\b/gi,
+                                      r: "people work better" },
+  { label: "environments where people", pattern: /\benvironments where (\w+) can (thrive|flourish|grow|succeed)\b/gi,
+                                      r: (_, who, v) => `conditions where ${who} do better` },
+
+  // ── General AI sentence-architecture patterns ────────────────────────────
+  // Rules target STRUCTURAL SHAPE, not sample-specific words.
+  // Em-dashes are already converted to ", " by pre-process before these run.
+
+  // PATTERN A: "Along the way, I discovered X, and that curiosity/passion led me into Y"
+  // Split compound into two sentences — breaks the narrative-arc template
+  { label: "Along the way I discovered ... led me into",
+                                        pattern: /\bAlong the way,?\s+I discovered ([^,]+),\s*and that (?:curiosity|passion|interest) led me into ([^.]+)\./gi,
+                                        r: (_, clause, dest) => `I discovered ${clause.trim()}. That drew me toward ${dest.trim()}.` },
+  // PATTERN B: "often [gerund phrase] to uncover/find the root cause of X"
+  // Participial tail after main clause — break into its own sentence
+  { label: "often digging deep to uncover root cause",
+                                        pattern: /,?\s*often digging deep(?:ly)? to (?:uncover|find|identify|trace) the (?:root )?cause of ([^.]+)\./gi,
+                                        r: (_, x) => `. Finding the source of ${x.trim()} is a regular part of the work.` },
+
+  // PATTERN C: "What keeps me X is [NP]" — introspective subject inversion (no trailing comma)
+  // Match only when the clause ends cleanly at period, not when followed by ", whether"
+  { label: "What keeps me X is Y",      pattern: /\bWhat keeps me (\w[\w ]*?) is (?:the (?:opportunity|chance) to )?(\w[^,.\n]+)\./gi,
+                                        r: (_, adj, rest) => `${rest.trim()[0].toUpperCase()}${rest.trim().slice(1)}.` },
+
+  // PATTERN D: "every day, whether that’s A, B, or C"  (em-dash already → comma by pre-process)
+  // Split at "whether" — the enumerative clause is a very strong AI signal
+  { label: "every day, whether that’s",  pattern: /\bevery day,\s+whether that[‘’]?s\s+([^.]+)\./gi,
+                                        r: (_, list) => `every day. That means ${list.trim()}.` },
+  { label: ", whether that’s (general)", pattern: /,\s+whether that[‘’]?s\s+([^.]+)\./gi,
+                                        r: (_, list) => `. That includes ${list.trim()}.` },
+
+  // PATTERN E: Parallel gerund triple: "Xing A, Xing B, and/or Xing C"
+  // Collapse repeated verb — break the perfect-symmetry AI signal
+  { label: "building A, building B, building C",
+                                        pattern: /\bbuilding ([\w][^,]+),\s+building ([\w][^,]+),\s+(?:and |or )?building ([\w][^.,]+)/gi,
+                                        r: (_, a, b, c) => `building ${a.trim()}, ${b.trim()}, and ${c.trim()}` },
+  { label: "Xing A, Xing B, Xing C (generic)",
+                                        pattern: /\b(helping|sharing|growing|creating|driving|fostering|developing|supporting) ([\w][^,]{3,40}),\s+\1 ([\w][^,]{3,40}),\s+(?:and |or )?\1 ([\w][^.,]{3,40})/gi,
+                                        r: (_, v, a, b, c) => `${v} ${a.trim()}, ${b.trim()}, and ${c.trim()}` },
+
+  // PATTERN F: "I enjoy [gerund chain]" — parallel gerund list after "I enjoy"
+  { label: "collaborating with others, sharing ideas, and turning challenges",
+                                        pattern: /\bI enjoy collaborating with others,?\s+sharing ideas,?\s+and turning challenges into opportunities to (?:learn and )?grow\b/gi,
+                                        r: "Working alongside others and learning as I go is what I enjoy most" },
+  { label: "collaborating with others sharing ideas",
+                                        pattern: /\bcollaborating with others,?\s+sharing ideas\b/gi,
+                                        r: "working with others and sharing ideas" },
+  { label: "turning challenges into opportunities to learn and grow",
+                                        pattern: /\bturning challenges into opportunities to (?:learn and )?grow\b/gi,
+                                        r: "learning as I go" },
+
+  // PATTERN G: "And through it all, [emotional resolution]" — AI narrative close
+  { label: "And through it all",         pattern: /\bAnd through it all,?\s+/gi,             r: "" },
+
+  // PATTERN H: "I’ve found a place where I [truly] belong"
+  { label: "found a place where I belong",
+                                        pattern: /\bI[‘’]?ve found a place where I (?:truly )?belong\b/gi,
+                                        r: "I feel at home here" },
+
+  // PATTERN I: "I’m proud to be part of X, a [team/org] that values/where Y"
+  // Split the appositive into its own sentence
+  { label: "proud to be part of X, a team that values Y",
+                                        pattern: /\bI[‘’]?m (?:proud|glad|excited|honoured|honored) to be (?:a )?part of ([^,]+),\s+a (?:team|company|group|organisation|organization) (?:that (?:values|believes|champions)|where) ([^.]+)\./gi,
+                                        r: (_, org, desc) => `${org.trim()} is where I want to be. The team values ${desc.trim()}.` },
+  { label: "proud to be part of",        pattern: /\bI[‘’]?m proud to be (?:a )?part of\b/gi, r: "I’m part of" },
+
+  // PATTERN J: "a team that values X, Y, and Z" standalone
+  { label: "a team that values",         pattern: /\ba team that values ([^.!?]+)\b/gi,
+                                        r: (_, x) => `a team where ${x.trim()} matter` },
+
+  // PATTERN K: "What drives/motivates/excites me is" — same inversion
+  { label: "What drives me is",          pattern: /\bWhat drives me is\b/gi,                 r: "I’m driven by" },
+  { label: "What motivates me is",       pattern: /\bWhat motivates me is\b/gi,              r: "I’m motivated by" },
+  { label: "What excites me is",         pattern: /\bWhat excites me is\b/gi,                r: "I’m excited by" },
+
+  // PATTERN L: "What I appreciate/value/love most about X is Y" — subject inversion
+  // AI favours this fronted "What" clause; use simpler fallback rewrite
+  { label: "What I appreciate most about X is Y",
+                                        pattern: /\bWhat I (appreciate|value|love|enjoy|like) most about ([^.]+?) is\b/gi,
+                                        r: (_, v, subj) => `The standout part of ${subj.trim()} is` },
+  { label: "What I appreciate most about (simple)",
+                                        pattern: /\bWhat I (appreciate|value|love|enjoy|like) most about\b/gi,
+                                        r: "The best part of" },
+
+  // PATTERN M: "not only X, but also Y" — paired correlative (strongest AI signal in formal prose)
+  { label: "not only X but also Y",     pattern: /\bnot only ([^,]+),?\s+but also ([^.!?\n]+)/gi,
+                                        r: (_, a, b) => `${a.trim()}, and ${b.trim()}` },
+
+  // PATTERN N: "at the same time" as sentence-end intensifier
+  { label: "at the same time (end)",    pattern: /,?\s+at the same time\.$/gim,              r: "." },
+  { label: "at the same time (mid)",    pattern: /,?\s+at the same time,\s+/gi,              r: ", yet " },
+
+  // PATTERN O: "It could be yours as well" / "It could be X as well" — direct address closer
+  { label: "It could be yours as well", pattern: /\bIt could be (yours|theirs|ours|his|hers)(?: as well)?\./gi,
+                                        r: (_, pron) => `The same is possible for ${pron === 'yours' ? 'you' : pron}.` },
+
+  // PATTERN P: "inspire you to [verb], [verb], and [verb] every day" — parallel imperative after "inspire"
+  { label: "inspire you to V1, V2, and V3",
+                                        pattern: /\binspire (?:you|us|them|people) to (\w[^,]+),\s+(\w[^,]+),\s+(?:and )?(\w[^.!?\n]+)/gi,
+                                        r: (_, a, b, c) => `inspire ${a.trim()}, ${b.trim()}, and ${c.trim()}` },
+
+  // PATTERN Q: "the culture of [noun/gerund]" — nominalisation pattern common in AI bio text
+  { label: "the culture of learning",   pattern: /\bthe culture of (learning|growth|innovation|improvement|collaboration|feedback|excellence)\b/gi,
+                                        r: (_, n) => `a culture where ${n} is valued` },
+
+  // PATTERN R: "never seen as X, Y are encouraged, Z are heard" — parallel passive triplet
+  // Three balanced passive clauses: very high AI signal
+  { label: "parallel passive triplet (X are encouraged, Y are heard)",
+                                        pattern: /\b(\w[\w ]+) (?:are|is) (encouraged|heard|welcomed|valued|respected|celebrated),\s+(\w[\w ]+) (?:are|is) (encouraged|heard|welcomed|valued|respected|celebrated)\b/gi,
+                                        r: (_, s1, v1, s2) => `${s1.trim()} are ${v1}, and so ${s2.trim()}` },
+
+  // PATTERN S: "X exists in every form, from A to B" — scope expansion closer
+  { label: "exists in every form from X to Y",
+                                        pattern: /\b(\w[\w ]+) exists in every form,?\s+from ([^,]+) to ([^.!?\n]+)/gi,
+                                        r: (_, subj, a, b) => `${subj.trim()} shows up across ${a.trim()} and ${b.trim()}` },
+
+  // PATTERN T: "exciting, intimidating, and full of X" — triple adjective pile
+  { label: "exciting intimidating and full of",
+                                        pattern: /\b(exciting|thrilling|rewarding|challenging),\s+(intimidating|daunting|overwhelming|humbling),\s+and (full of|filled with) ([^.!?\n,]+)/gi,
+                                        r: (_, a, b, _c, d) => `both ${a} and ${b}, with ${d}` },
+
+  // PATTERN U: "beginning of my journey... and the starting point of" — near-synonym doubling
+  { label: "beginning of journey and starting point of",
+                                        pattern: /\bthe beginning of my journey(?: as a? [^,]+)?,?\s+and the starting point of ([^.!?\n]+)/gi,
+                                        r: (_, x) => `where ${x.trim()} began` },
+
+  // PATTERN V: "beginning of my journey as a [role]" standalone — AI career arc opener
+  { label: "was the beginning of my journey as a",
+                                        pattern: /\bwas the beginning of my journey as a ([^,.\n]+)/gi,
+                                        r: (_, role) => `was where I started as a ${role.trim()}` },
+
+  // PATTERN W: "Coming from a path/background where I [verb]..." — participial opener
+  // AI loves to open with "Coming from..." to establish backstory; flip to direct statement
+  { label: "Coming from a path where I",
+                                        pattern: /\bComing from a (path|background|place) where I (\w[^,]+),\s+([^.]+)\./gi,
+                                        r: (_, _bg, clause, main) => `I ${clause.trim()}, so ${main.trim()}.` },
+  { label: "Coming from (general)",     pattern: /\bComing from\b/gi,                          r: "Having come from" },
+
+  // PATTERN X: "There were moments of X, countless things to Y, and entirely new Z to V"
+  // Existential "There were" with parallel triplet — very common AI opening structure
+  { label: "There were moments of X countless things to Y",
+                                        pattern: /\bThere were moments of ([^,]+), countless things to ([^,]+), and ([^.]+)\./gi,
+                                        r: (_, a, b, c) => `The ${a.trim()} was real. There was a lot to ${b.trim()}, and ${c.trim()}.` },
+  { label: "There were moments of (simple)",
+                                        pattern: /\bThere were moments of\b/gi,                r: "The" },
+
+  // PATTERN Y: "It gave me not only X, but also Y" — pronoun-referent + correlative combo
+  // Pattern M catches "not only/but also" mid-sentence; this handles sentence-start "It gave me"
+  { label: "It gave me not only X but also Y",
+                                        pattern: /\bIt gave me not only ([^,]+),?\s+but also ([^.!?\n]+)/gi,
+                                        r: (_, a, b) => `It gave me ${a.trim()}, and ${b.trim()}` },
+
+  // PATTERN Z: "X, Y, and become better every day" — parallel imperative chain closer
+  { label: "become better every day",   pattern: /\bbecome better every day\b/gi,              r: "keep improving" },
+  { label: "think bigger, challenge yourself", pattern: /\bthink bigger,?\s+challenge yourself\b/gi,
+                                        r: "push yourself" },
+
+  // ── Professional assessment / HR document patterns ───────────────────────
+  // These fire on structured evaluation text (candidate reports, performance reviews, etc.)
+
+  // "[Name] appears to be the strongest overall candidate, balancing A, B, and alignment with C"
+  // Long comma-list verdict sentence — split at the participle
+  { label: "appears to be strongest candidate balancing",
+                                        pattern: /\b(\w[\w ]+) appears to be the (strongest|best|most suitable|top) (overall )?candidate,?\s+balancing ([^.]+)\./gi,
+                                        r: (_, name, sup, _ov, factors) => `${name.trim()} is the ${sup} candidate. ${name.trim().split(' ')[0]} covers ${factors.trim()}.` },
+
+  // "appears to be [adj]" — hedge formula common in AI assessments
+  { label: "appears to be",              pattern: /\bappears to be\b/gi,                      r: "is" },
+
+  // "Please let me know if you would like me to provide [more details / additional information]"
+  // AI closing offer — very high signal in professional documents
+  { label: "please let me know if you would like",
+                                        pattern: /\b[Pp]lease let me know if you (?:would like|want|need)(?: me to)? (?:provide |discuss |schedule |arrange )?([^.!?\n]+)\./gi,
+                                        r: (_, x) => `Happy to discuss ${x.trim()} further.` },
+
+  // "would like me to provide more details or schedule a [discussion/meeting/call]"
+  { label: "provide more details or schedule",
+                                        pattern: /\bprovide (?:more|additional|further) details or schedule a ([^.!?\n]+)\./gi,
+                                        r: (_, x) => `talk through this further or set up a ${x.trim()}.` },
+
+  // "primarily project-oriented rather than organizational leadership"
+  // Evaluative contrast: "X rather than Y" — AI assessment formula
+  { label: "primarily X rather than Y (assessment)",
+                                        pattern: /\bprimarily ([^.]+?) rather than ([^.!?\n]+)\./gi,
+                                        r: (_, a, b) => `more ${a.trim()} than ${b.trim()}.` },
+
+  // "does not meet the experience threshold" — formal negative assessment
+  { label: "does not meet the experience threshold",
+                                        pattern: /\bdoes not meet the (experience|required|minimum) threshold\b/gi,
+                                        r: "falls short of the required experience" },
+
+  // "alignment with the hiring objectives/criteria/requirements"
+  { label: "alignment with the hiring objectives",
+                                        pattern: /\balignment with the (hiring|role|stated|position) (objectives|criteria|requirements|goals)\b/gi,
+                                        r: "fit with the role requirements" },
+
+  // "Strongest overall X with extensive Y and Z" — stacked superlative opener
+  { label: "Strongest overall X with extensive Y",
+                                        pattern: /\bStrongest overall ([^.]+?) with extensive ([^.]+?)(?: and ([^.]+?))?\./gi,
+                                        r: (_, a, b, c) => `Leads on ${a.trim()}. Extensive ${b.trim()}${c ? ` and ${c.trim()}` : ''}.` },
+
+  // "compared to the other candidates" — AI comparative closer
+  { label: "compared to the other candidates",
+                                        pattern: /\bcompared to the other candidates\b/gi,     r: "relative to the other candidates" },
+
+  // "a more fragmented employment history" — softened negative
+  { label: "a more fragmented employment history",
+                                        pattern: /\ba more fragmented (employment )?history\b/gi, r: "a less consistent career history" },
+
+  // "experience is primarily X-oriented rather than Y"
+  // Already caught by "primarily X rather than Y" above, but catch standalone "X-oriented"
+  { label: "experience is primarily X-oriented",
+                                        pattern: /\b(experience|background|focus) is primarily (\w[\w-]+)-oriented\b/gi,
+                                        r: (_, noun, adj) => `${noun} leans toward ${adj}` },
+
+  // "[Subject], reducing/improving/ensuring [noun phrase]" — participial tail on assessment sentence
+  // "Current manager is already aware and supportive of the move, reducing transition risk."
+  // The participial tail is a strong AI signal — convert to two plain clauses
+  // Only fire when the participial phrase directly follows a complete main clause (main ≥6 words)
+  // and does NOT follow a comma that's part of a list (e.g. "management, demonstrating" is
+  // a continuation, not a participial tail off a complete clause).
+  { label: "X comma reducing/improving/ensuring Y",
+                                        pattern: /\b([^,]{20,}),\s+(reducing|improving|ensuring|minimising|minimizing|increasing|limiting|supporting|enabling) ([^.!?\n]+)\./gi,
+                                        r: (_, main, verb, obj) => {
+                                          const plain = verb.replace(/ing$/, 'es').replace(/([aeiou])ses$/, (m,v) => v + 's');
+                                          return `${main.trim()}. This ${plain} ${obj.trim()}.`;
+                                        } },
+
+  // "Happy to discuss X further" / "Happy to X" — casual closing formula
+  // Replace with a proper professional close
+  { label: "Happy to discuss further",  pattern: /\bHappy to discuss ([^.!?\n]+?) further\./gi,
+                                        r: (_, x) => `Please reach out if you would like to discuss ${x.trim()} in more detail.` },
+  { label: "Happy to X",                pattern: /^Happy to ([^.!?\n]+)\./gim,
+                                        r: (_, x) => `I am available to ${x.trim()}.` },
+
+  // "has a less consistent career history relative to the other candidates"
+  // "has no X, has a Y" — parallel has-clause pair (two short assertions joined by comma)
+  { label: "has no X has a Y (parallel)",
+                                        pattern: /\bhas no ([^,]+),\s+has (a |an )?([^.!?\n]+)\./gi,
+                                        r: (_, x, art, y) => `No ${x.trim()}. Career history is ${y.trim()}.` },
+
+  // "aware and supportive of the move" — stock phrase in transition/change management AI text
+  { label: "aware and supportive of the move",
+                                        pattern: /\baware and supportive of the move\b/gi,      r: "informed and supportive" },
+
+  // ── Hiring/assessment document AI register ────────────────────────────────
+  // These patterns appear specifically in AI-written candidate evaluations and HR documents
+
+  { label: "a proven track record",      pattern: /\ba proven track record\b/gi,               r: "a track record" },
+  { label: "aligns closely with the role", pattern: /\baligns closely with the role\b/gi,      r: "fits the role" },
+  { label: "aligns well with the role",  pattern: /\baligns well with the role\b/gi,           r: "fits the role" },
+  { label: "is a clear differentiator",  pattern: /\bis a clear differentiator\b/gi,           r: "sets them apart" },
+  { label: "a clear differentiator",     pattern: /\ba clear differentiator\b/gi,              r: "a real advantage" },
+  { label: "On the X side,",             pattern: /\bOn the ([\w][\w\s-]+?) side,\s*/gi,       r: (_, x) => `${x.trim().charAt(0).toUpperCase()}${x.trim().slice(1)}: ` },
+  { label: "proactively",                pattern: /\bproactively\b/gi,                         r: "" },
+  { label: "can be onboarded quickly",   pattern: /\bcan be onboarded quickly\b/gi,            r: "can start quickly" },
+  { label: "with minimal ramp-up time",  pattern: /\bwith minimal ramp-up time\b/gi,           r: "" },
+  { label: "informed his/her manager of his/her intent", pattern: /\binformed (his|her|their) (?:current )?manager of (his|her|their) intent to\b/gi,
+                                          r: (_, p1, p2) => `told ${p1} manager ${p2} plan to` },
+  { label: "self-awareness and readiness", pattern: /\bself-awareness and readiness\b/gi,      r: "self-awareness" },
+
+  // ── Minimal word-level swaps (individual phrase signals) ─────────────────
+  { label: "continuous learning",        pattern: /\bcontinuous learning\b/gi,               r: "learning" },
+  { label: "continuous improvement",     pattern: /\bcontinuous improvement\b/gi,            r: "improvement" },
+  { label: "continuous growth",          pattern: /\bcontinuous growth\b/gi,                 r: "growth" },
+  { label: "diverse perspectives",       pattern: /\bdiverse perspectives\b/gi,              r: "varied perspectives" },
+  { label: "build something meaningful", pattern: /\bbuild something meaningful\b/gi,        r: "do work that matters" },
+  { label: "the opportunity to",         pattern: /\bthe opportunity to\b/gi,                r: "the chance to" },
+  { label: "My work focuses on",         pattern: /\bMy work focuses on\b/gi,                r: "I focus on" },
+  { label: "keep systems running smoothly", pattern: /\bkeep (?:their |the )?systems running smoothly\b/gi,
+                                        r: "keep systems running" },
+  { label: "bring X to the table",       pattern: /\bbring[s]? ([^.]+) to the table\b/gi,
+                                        r: (_, x) => `offer ${x.trim()}` },
+  { label: "problem-solving mindset",    pattern: /\bproblem[- ]solving mindset\b/gi,        r: "problem-solving instinct" },
+  { label: "growth mindset",             pattern: /\bgrowth mindset\b/gi,                    r: "drive to keep improving" },
+  { label: "collaborative mindset",      pattern: /\bcollaborative mindset\b/gi,             r: "collaborative approach" },
+  { label: "digging deep to",            pattern: /\bdigging deep(?:ly)? to\b/gi,            r: "drilling down to" },
+
+  // ── AI-favourite hedge / filler combos ────────────────────────────────────
+  { label: "worth noting",          pattern: /\bworth noting\b/gi,                             r: "notable" },
+  { label: "it is clear that",      pattern: /\bit(?:'s| is) clear that\s*/gi,                 r: "" },
+  { label: "it is evident that",    pattern: /\bit(?:'s| is) evident that\s*/gi,               r: "" },
+  { label: "it is obvious that",    pattern: /\bit(?:'s| is) obvious that\s*/gi,               r: "" },
+  { label: "it is apparent that",   pattern: /\bit(?:'s| is) apparent that\s*/gi,              r: "" },
+  { label: "it is fair to say",     pattern: /\bit(?:'s| is) fair to say( that)?\s*/gi,        r: "" },
+  { label: "it is safe to say",     pattern: /\bit(?:'s| is) safe to say( that)?\s*/gi,        r: "" },
+  { label: "without a doubt",       pattern: /\bwithout (a )?doubt[,.]?\s*/gi,                 r: "" },
+  { label: "there is no doubt",     pattern: /\bthere(?:'s| is) no doubt( that)?\s*/gi,        r: "" },
+  { label: "beyond a shadow",       pattern: /\bbeyond (a shadow of (a )?)?doubt\b/gi,         r: "clearly" },
+  { label: "in light of",           pattern: /\bin light of\b/gi,                              r: "given" },
+  { label: "in view of",            pattern: /\bin view of\b/gi,                               r: "given" },
+  { label: "it follows that",       pattern: /\bit follows that\s*/gi,                         r: "" },
+  { label: "as such",               pattern: /\bAs such[,.]?\s*/gi,                            r: "" },
+  { label: "as such (mid)",         pattern: /\bas such\b/gi,                                  r: "so" },
+  { label: "in other words",        pattern: /\bIn other words[,:]?\s*/gi,                     r: "" },
+  { label: "to put it simply",      pattern: /\bTo put it (simply|plainly|bluntly)[,:]?\s*/gi, r: "" },
+  { label: "to put it differently", pattern: /\bTo put it differently[,:]?\s*/gi,              r: "" },
+  { label: "needless to say",       pattern: /\bNeedless to say[,.]?\s*/gi,                    r: "" },
+  { label: "it goes without saying 2",pattern:/\bit goes without saying\b/gi,                  r: "" },
+  { label: "first and foremost",    pattern: /\bFirst and foremost[,:]?\s*/gi,                 r: "" },
+  { label: "last but not least",    pattern: /\bLast but not least[,:]?\s*/gi,                 r: "" },
+  { label: "all in all",            pattern: /\bAll in all[,.]?\s*/gi,                         r: "" },
+  { label: "by the same token",     pattern: /\bBy the same token[,.]?\s*/gi,                  r: "" },
+  { label: "in the same vein",      pattern: /\bIn the same vein[,.]?\s*/gi,                   r: "" },
+  { label: "to this end",           pattern: /\bTo this end[,.]?\s*/gi,                        r: "" },
+  { label: "it is worth noting 2",  pattern: /\bIt(?:'s| is) worth (noting|mentioning|highlighting)\b/gi, r: "" },
+  { label: "crucially",             pattern: /\bCrucially[,:]?\s*/gi,                          r: "" },
+  { label: "interestingly",         pattern: /\bInterestingly[,:]?\s*/gi,                      r: "" },
+  { label: "remarkably",            pattern: /\bRemarkably[,:]?\s*/gi,                         r: "" },
+  { label: "strikingly",            pattern: /\bStrikingly[,:]?\s*/gi,                         r: "" },
+  { label: "unsurprisingly",        pattern: /\bUnsurprisingly[,:]?\s*/gi,                     r: "" },
+  { label: "understandably",        pattern: /\bUnderstandably[,:]?\s*/gi,                     r: "" },
+  { label: "admittedly",            pattern: /\bAdmittedly[,:]?\s*/gi,                         r: "" },
+  { label: "granted",               pattern: /\bGranted[,.]?\s+/gi,                            r: "" },
+
+  // ── Sentence-level AI structural patterns (detected + replaced by structuralRewrite pass) ──
+  { label: "is becoming #N",        pattern: /\bIt'?s?\s+becoming\s+#?\w+\s+(overall|in the)/gi, r: (m) => m },
+  { label: "locked up #N",          pattern: /\blocked\s+up\s+#?\w+\s+among\b/gi,               r: (m) => m },
+  { label: "much closer to",        pattern: /\bmuch\s+closer\s+to\b/gi,                        r: "close to" },
+  { label: "than any member is to", pattern: /\bthan\s+any\s+\w+\s+is\s+to\b/gi,               r: "by a wide margin" },
+  { label: "keep up those",         pattern: /\bkeep\s+up\s+those\b/gi,                         r: "continue those" },
+  { label: "much faster than",      pattern: /\bmuch\s+faster\s+than\b/gi,                      r: "faster than" },
+  { label: "much higher",           pattern: /\bmuch\s+higher\b/gi,                             r: "higher" },
+  { label: "the next X is no longer Y", pattern: /\bthe\s+next\s+(?:meaningful\s+|key\s+)?(?:milestone|goal|target)\s+is\s+no\s+longer\b/gi, r: "next up:" },
+
+  // ── Business email AI patterns ────────────────────────────────────────────
+  { label: "To recap",              pattern: /^To recap[,:]?\s*/gim,                              r: "For context: " },
+  { label: "As a quick recap",      pattern: /\bAs a quick recap[,:]?\s*/gi,                      r: "For context: " },
+  { label: "Quick update colon",    pattern: /^Quick update:\s*/gim,                              r: "For context: " },
+  { label: "I hope this email finds",pattern:/\bI hope this (email|message) finds you\s*\w*/gi,   r: "" },
+  { label: "I hope you are well",   pattern: /\bI hope (you('re| are)|this finds you) well[.,]?\s*/gi, r: "" },
+  { label: "I am writing to",       pattern: /\bI am writing to\b/gi,                             r: "I am writing to" },
+  { label: "Please find attached",  pattern: /\bPlease find attached\b/gi,                        r: "Attached:" },
+  { label: "Please find enclosed",  pattern: /\bPlease find enclosed\b/gi,                        r: "Enclosed:" },
+  { label: "do not hesitate to",    pattern: /\b[Pp]lease do not hesitate to (contact|reach out|get in touch)[^.]*\./gi, r: "Please do not hesitate to contact me if you have any questions." },
+  { label: "feel free to reach out",pattern: /\b[Ff]eel free to (reach out|contact me|get in touch)[^.]*\./gi,          r: "Please feel free to reach out should you have any questions." },
+  { label: "Just let me know",      pattern: /\bJust let me know[.,]?/gi,                         r: "Please let me know." },
+  { label: "Happy to jump on a call",pattern:/\bHappy to (jump on|hop on|schedule|arrange) a (quick )?call[^.]*\./gi,  r: "I would be happy to discuss this further at your convenience." },
+  { label: "Happy to call",         pattern: /\bHappy to call if (that's|it's) easier[.,]?/gi,    r: "I would be happy to discuss this further at your convenience." },
+  { label: "I'd value your steer",  pattern: /\bI'?d value your steer on\b/gi,                    r: "I would appreciate your guidance on" },
+  { label: "I'm not seeing a realistic path", pattern: /\bI'?m not seeing a realistic path to (filling|hiring|sourcing|finding)\b/gi,
+                                      r: (_, v) => `I do not see a viable path to ${v.replace(/ing$/, 'ing')}` },
+  { label: "realistic path generic", pattern: /\bI'?m not seeing a realistic path to\b/gi,         r: "I do not see a viable path to" },
+  { label: "clear path to filling",  pattern: /\bclear path to filling\b/gi,                        r: "viable path to filling" },
+  { label: "filling these internally", pattern: /\bfilling these (?:roles )?internally\b/gi,        r: "filling these roles from within the organisation" },
+  { label: "remains a firm requirement", pattern: /\bremains a firm requirement\b/gi,             r: "remains a firm requirement" },
+  { label: "is still required",     pattern: /\bis still required\b/gi,                           r: "remains a firm requirement" },
+  { label: "at this stage",         pattern: /,?\s*\bat this (stage|juncture|point)\b/gi,          r: "" },
+  { label: "Given what I shared",   pattern: /\bGiven what I (shared|mentioned) earlier\b/gi,     r: "Given what I outlined" },
+  { label: "Based on what I said",  pattern: /\bBased on what I said\b/gi,                        r: "Given what I outlined" },
+  { label: "I'd expect",            pattern: /\bI'?d expect\b/gi,                                 r: "I would anticipate" },
+  { label: "I think we'd get",      pattern: /\bI think we'?d get\b/gi,                           r: "I would anticipate" },
+  { label: "solid (market eval)",   pattern: /\bthe market for this profile[^.]+(?:is solid|looks good)\b/gi,
+                                      r: (m) => m.replace(/is solid|looks good/, 'is strong') },
+  { label: "a much stronger pipeline", pattern: /\ba much stronger pipeline\b/gi,                 r: "a stronger applicant pool" },
+  { label: "more applicants",       pattern: /\bmore applicants\b/gi,                             r: "a stronger applicant pool" },
+  { label: "slip through",          pattern: /\bslip through\b/gi,                                r: "be overlooked" },
+  { label: "have been live for",    pattern: /\bhave been live for\b/gi,                          r: "have been open for" },
+  { label: "come through",          pattern: /\bhad one applicant come through\b/gi,              r: "received one application" },
+  { label: "didn't progress past interview", pattern: /\bdidn'?t progress past (interview|the interview)\b/gi, r: "did not advance past the interview stage" },
+  { label: "Apologies for the nudge", pattern: /\bApologies for the nudge[,.]?\s*/gi,             r: "I apologise for following up again, " },
+  { label: "I want to ensure",      pattern: /\bI want to ensure\b/gi,                            r: "I want to ensure" },
+  { label: "I wanted to follow up", pattern: /\bI wanted to follow up\b/gi,                       r: "I'm writing to follow up" },
+
+  // "please do let me know and I will/I'll [verb] accordingly" — remove the tail entirely
+  { label: "please do let me know and I'll align",
+                                    pattern: /,?\s*please do let me know and I(?:'ll| will) (?:align|adjust|adapt|update)(?:\s+accordingly)?[.,]?/gi,
+                                    r: ". Please let me know." },
+
+  // "please do let me know" (general) — remove the redundant "do"
+  { label: "please do let me know",  pattern: /\bplease do let me know\b/gi,                      r: "please let me know" },
+
+  // "I want to make sure nothing stalls going into the year-end period"
+  { label: "make sure nothing stalls going into",
+                                    pattern: /\bnothing stalls going into [^.!?\n]+/gi,            r: "momentum doesn't stall before year-end" },
+
+  // "going into the year-end period" tail
+  { label: "going into the year-end period",
+                                    pattern: /\s+going into the year[- ]end period\b/gi,           r: "" },
+
+  // "I wanted to check in on whether"
+  { label: "I wanted to check in on whether",
+                                    pattern: /\bI wanted to check in on whether\b/gi,              r: "I wanted to ask whether" },
+
+  // FULL sentence: "If [that/it] is still under consideration, I am ready to X as soon as you have Y."
+  // Rewrite the ENTIRE sentence in one pass — no cascading rules
+  { label: "If that still under consideration ready to X as soon as",
+                                    pattern: /\bIf (?:that|it)(?:'s| is) still under consideration,?\s+I(?:'m| am) ready to ([^.!?\n]+?) as soon as (?:you|we) have ([^.!?\n]+?)\./gi,
+                                    r: (_, action, trigger) =>
+                                      `Once there's clarity on ${trigger.trim()}, I can ${action.trim()}.` },
+
+  // "If there have been any other developments or a change of direction, please do let me know and I will align accordingly."
+  // Rewrite entire sentence in one pass
+  { label: "If there have been any developments",
+                                    pattern: /\bIf there ha(?:ve|s) been any other developments or a change of direction,?\s+please (?:do )?let me know[^.]*\./gi,
+                                    r: "Let me know if anything has changed." },
+
+  // "and I will align accordingly" leftover
+  { label: "and I will align accordingly",
+                                    pattern: /\s+and I(?:'ll| will) align accordingly\b\.?/gi,      r: "." },
+
+  { label: "please let me know if you have any questions", pattern: /\b[Pp]lease let me know if you have any questions[^.]*\./gi, r: "Please do not hesitate to contact me should you have any questions." },
+  { label: "Thanks informal",       pattern: /^Thanks[,]?\s*$/gim,                                r: "Kind regards," },
+  { label: "Cheers",                pattern: /^Cheers[,]?\s*$/gim,                                r: "Kind regards," },
+
+  // ── Corporate / AI assessment register — word-level swaps only ──────────────
+  { label: "personal brand",        pattern: /\bpersonal brand\b/gi,                              r: "reputation" },
+  { label: "specialization narrative", pattern: /\bspeciali[sz]ation narrative\b/gi,              r: "area of expertise" },
+  { label: "signature skill",       pattern: /\bsignature skill(s)?\b/gi,                         r: "standout skill$1" },
+  { label: "high-level exposure",   pattern: /\bhigh[- ]level exposure\b/gi,                      r: "broader visibility" },
+  { label: "anchored regionally",   pattern: /\banchored regionally\b/gi,                         r: "limited to the region" },
+  { label: "anchored locally",      pattern: /\banchored locally\b/gi,                            r: "limited to local contacts" },
+  { label: "value proposition",     pattern: /\bunique value proposition\b/gi,                    r: "what sets them apart" },
+  { label: "value proposition",     pattern: /\bvalue proposition\b/gi,                           r: "what they offer" },
+  { label: "pain points",           pattern: /\bpain points?\b/gi,                                r: "problems" },
+  { label: "skill gap",             pattern: /\bskill gaps?\b/gi,                                 r: "gaps" },
+  { label: "skillset",              pattern: /\bskillset\b/gi,                                    r: "skills" },
+  { label: "toolkit",               pattern: /\btoolkit\b/gi,                                     r: "tools" },
+  { label: "headcount",             pattern: /\bheadcount\b/gi,                                   r: "team size" },
+  { label: "onboarding",            pattern: /\bonboarding\b/gi,                                  r: "joining process" },
+  { label: "offboarding",           pattern: /\boffboarding\b/gi,                                 r: "departure process" },
+  { label: "pivot point",           pattern: /\bpivot point\b/gi,                                 r: "turning point" },
+  { label: "data-driven",           pattern: /\bdata[- ]driven\b/gi,                              r: "evidence-based" },
+  { label: "results-driven",        pattern: /\bresults[- ]driven\b/gi,                           r: "results-focused" },
+  { label: "outcome-driven",        pattern: /\boutcome[- ]driven\b/gi,                           r: "results-focused" },
+  { label: "cross-functional",      pattern: /\bcross[- ]functional\b/gi,                         r: "cross-team" },
+  { label: "executive presence",    pattern: /\bexecutive presence\b/gi,                          r: "gravitas" },
+  { label: "thought leadership",    pattern: /\bthought leaders?hip\b/gi,                         r: "expertise" },
+  { label: "ideation",              pattern: /\bideation\b/gi,                                    r: "brainstorming" },
+  { label: "ideate",                pattern: /\bideate\b/gi,                                      r: "brainstorm" },
+  { label: "solutioning",           pattern: /\bsolutioning\b/gi,                                 r: "problem-solving" },
+  { label: "strategic clarity",     pattern: /\bstrategic clarity\b/gi,                           r: "clear direction" },
+  { label: "strategic alignment",   pattern: /\bstrategic alignment\b/gi,                         r: "alignment on direction" },
+  { label: "narrative clarity",     pattern: /\bnarrative clarity\b/gi,                           r: "clear message" },
+  { label: "low-hanging fruit",     pattern: /\blow[- ]hanging fruit\b/gi,                        r: "easy wins" },
+  { label: "right-sizing",          pattern: /\bright[- ]sizing\b/gi,                             r: "downsizing" },
+  { label: "go-to-market",          pattern: /\bgo[- ]to[- ]market\b/gi,                         r: "launch" },
+  { label: "run rate",              pattern: /\brun rate\b/gi,                                    r: "current pace" },
+  { label: "burn rate",             pattern: /\bburn rate\b/gi,                                   r: "spending rate" },
+  { label: "positioning (career)",  pattern: /\bpositioning statement\b/gi,                       r: "pitch" },
+  { label: "talent pipeline",       pattern: /\btalent pipeline\b/gi,                             r: "candidate pool" },
+  { label: "success metrics",       pattern: /\bsuccess metrics\b/gi,                             r: "measures of success" },
+  { label: "key metrics",           pattern: /\bkey metrics\b/gi,                                 r: "key numbers" },
+  { label: "growth mindset",        pattern: /\bgrowth mindset\b/gi,                              r: "drive to keep improving" },
+  { label: "problem-solving mindset", pattern: /\bproblem[- ]solving mindset\b/gi,               r: "problem-solving instinct" },
+
+  // ── High-frequency AI-score words (generic, safe swaps) ──────────────────────
+  // These words are not "slop" but score high on AI detectors due to token frequency
+  { label: "significant (adj)",     pattern: /\bsignificant\b(?! improvement| impact| effect| change| role)/gi, r: "strong" },
+  { label: "diverse",               pattern: /\bdiverse\b/gi,                                    r: "varied" },
+  { label: "analytical",            pattern: /\banalytical\b/gi,                                  r: "sharp" },
+  { label: "intelligence (non-AI)", pattern: /\bmarket intelligence\b/gi,                         r: "market insight" },
+  { label: "big-picture",           pattern: /\bbig[- ]picture thinking\b/gi,                     r: "strategic view" },
+  { label: "expertise (overused)",  pattern: /\bcore expertise\b/gi,                               r: "core skills" },
+  { label: "purely",                pattern: /\bpurely\b/gi,                                      r: "solely" },
+  { label: "embedded",              pattern: /\bembedded in\b/gi,                                 r: "part of" },
+  { label: "sourcing moat",         pattern: /\bsourcing moat\b/gi,                               r: "sourcing edge" },
+  { label: "exposure (career)",     pattern: /\bregional exposure\b/gi,                           r: "regional reach" },
+  { label: "global exposure",       pattern: /\bglobal exposure\b/gi,                             r: "global reach" },
+];
+
+// ═══════════════════════════════════════════════════════
+// 3. CONTRACTION RULES  — separate pass, counted separately
+// ═══════════════════════════════════════════════════════
+const CONTRACTION_RULES = [
+  // Negations — always safe to contract
+  { pattern: /\bcannot\b/g,         r: "can't" },
+  { pattern: /\bdo not\b/g,         r: "don't" },
+  { pattern: /\bdoes not\b/g,       r: "doesn't" },
+  { pattern: /\bdid not\b/g,        r: "didn't" },
+  { pattern: /\bwill not\b/g,       r: "won't" },
+  { pattern: /\bwould not\b/g,      r: "wouldn't" },
+  { pattern: /\bcould not\b/g,      r: "couldn't" },
+  { pattern: /\bshould not\b/g,     r: "shouldn't" },
+  { pattern: /\bmust not\b/g,       r: "mustn't" },
+  { pattern: /\bare not\b/g,        r: "aren't" },
+  { pattern: /\bis not\b/g,         r: "isn't" },
+  { pattern: /\bwas not\b/g,        r: "wasn't" },
+  { pattern: /\bwere not\b/g,       r: "weren't" },
+  { pattern: /\bhave not\b/g,       r: "haven't" },
+  { pattern: /\bhas not\b/g,        r: "hasn't" },
+  { pattern: /\bhad not\b/g,        r: "hadn't" },
+  // Pronoun + verb (only safe, unambiguous ones)
+  { pattern: /\bI am\b/g,           r: "I'm" },
+  { pattern: /\bI will\b/g,         r: "I'll" },
+  // "I have" only contracts before a past participle (had/done/been/seen/written etc.)
+  // NOT before nouns: "I have clarity" must stay as-is
+  { pattern: /\bI have\b(?=\s+(?:\w+ed|been|done|gone|seen|heard|found|made|said|told|given|known|taken|come|run|won|met|felt|kept|left|lost|meant|read|sent|set|shown|spoken|thought|understood|written|forgotten|gotten|hidden|risen|stolen|woken))/g, r: "I've" },
+  { pattern: /\bI had\b/g,          r: "I'd" },
+  { pattern: /\bI would\b/g,        r: "I'd" },
+  { pattern: /\byou are\b/gi,       r: "you're" },
+  { pattern: /\byou will\b/gi,      r: "you'll" },
+  // "you have" only contracts before past participle — "you've had/done/been" but NOT "you've clarity"
+  { pattern: /\byou have\b(?=\s+(?:\w+ed|been|done|gone|seen|heard|found|made|said|told|given|known|taken|come|run|won|met|felt|kept|left|lost|meant|read|sent|set|shown|spoken|thought|understood|written|forgotten|gotten|hidden|risen|stolen|woken|a\b|an\b|the\b))/gi, r: "you've" },
+  { pattern: /\bwe are\b/gi,        r: "we're" },
+  { pattern: /\bwe will\b/gi,       r: "we'll" },
+  // "we have" — same rule: only before past participle
+  { pattern: /\bwe have\b(?=\s+(?:\w+ed|been|done|gone|seen|heard|found|made|said|told|given|known|taken|come|run|won|met|felt|kept|left|lost|meant|read|sent|set|shown|spoken|thought|understood|written|forgotten|gotten|hidden|risen|stolen|woken))/gi, r: "we've" },
+  { pattern: /\bthey are\b/gi,      r: "they're" },
+  { pattern: /\bthey will\b/gi,     r: "they'll" },
+  // "they have" — same rule: only before past participle
+  { pattern: /\bthey have\b(?=\s+(?:\w+ed|been|done|gone|seen|heard|found|made|said|told|given|known|taken|come|run|won|met|felt|kept|left|lost|meant|read|sent|set|shown|spoken|thought|understood|written|forgotten|gotten|hidden|risen|stolen|woken))/gi, r: "they've" },
+  { pattern: /\bit is\b/g,          r: "it's" },
+  { pattern: /\bit will\b/g,        r: "it'll" },
+  { pattern: /\bit has\b/g,         r: "it's" },
+  { pattern: /\bthat is\b/g,        r: "that's" },
+  { pattern: /\bthere is\b/g,       r: "there's" },
+  // NOTE: "there are" does not contract cleanly in formal prose — left as-is intentionally
+  { pattern: /\bhere is\b/g,        r: "here's" },
+  { pattern: /\bwho is\b/g,         r: "who's" },
+  { pattern: /\bwhat is\b/g,        r: "what's" },
+  { pattern: /\bwhere is\b/g,       r: "where's" },
+  { pattern: /\bhow is\b/g,         r: "how's" },
+];
+
+// ═══════════════════════════════════════════════════════
+// 4. INTENSIFIER LIST (for humanize pass)
+// ═══════════════════════════════════════════════════════
+const INTENSIFIER_RE = /\b(very|really|quite|rather|extremely|incredibly|highly|truly|completely|totally|utterly|simply|literally|obviously|undoubtedly)\s+/gi;
+
+// ═══════════════════════════════════════════════════════
+// 4a. BULLET RHYTHM PASS — break uniform parallel bullet lists
+//
+// AI detectors flag bullet lists not for the words but for the
+// STRUCTURE: every line ~same length, same noun-phrase pattern,
+// no sentence-ending punctuation. This pass breaks that rhythm
+// by joining every other pair of adjacent short bullets with "; "
+// and removing the bullet marker — without changing any words.
+//
+// Only fires when a block has ≥4 consecutive bullet lines.
+// ═══════════════════════════════════════════════════════
+
+function bulletRhythmPass(text) {
+  let count = 0;
+  const lines = text.split('\n');
+
+  const isBullet = line => /^[\s]*[•\-\*]\s+\S/.test(line);
+  const stripBullet = line => line.replace(/^[\s]*[•\-\*]\s+/, '').trimEnd();
+  const wordCount = s => s.split(/\s+/).length;
+
+  let i = 0;
+  const out = [];
+
+  while (i < lines.length) {
+    if (isBullet(lines[i])) {
+      const run = [];
+      while (i < lines.length && isBullet(lines[i])) {
+        run.push(stripBullet(lines[i]));
+        i++;
+      }
+
+      // Only reformat if run is long enough to have a uniform pattern (≥4 bullets)
+      if (run.length < 4) {
+        // Put bullet markers back for short runs — leave unchanged
+        run.forEach((r, idx) => out.push(lines[i - run.length + idx]));
+        continue;
+      }
+
+      // Asymmetric join pattern to maximise length variance:
+      // For n bullets, alternate: join-3, solo, join-2, solo, join-2, ...
+      // This creates short (solo ~10w) + long (joined ~25w) lines — high burstiness
+      const joined = [];
+      let j = 0;
+
+      // First group: try to join 3 if all ≤10 words each
+      if (run.length >= 3 &&
+          wordCount(run[0]) <= 10 && wordCount(run[1]) <= 10 && wordCount(run[2]) <= 10) {
+        joined.push(run[0] + '; ' + run[1].charAt(0).toLowerCase() + run[1].slice(1)
+                           + '; ' + run[2].charAt(0).toLowerCase() + run[2].slice(1));
+        count++;
+        j = 3;
+      }
+
+      // Remaining: pair up with "; ", solo if too long or last of odd run
+      while (j < run.length) {
+        const a = run[j];
+        if (j + 1 < run.length && wordCount(a) <= 12 && wordCount(run[j+1]) <= 12) {
+          joined.push(a + '; ' + run[j+1].charAt(0).toLowerCase() + run[j+1].slice(1));
+          count++;
+          j += 2;
+        } else {
+          joined.push(a);
+          j++;
+        }
+      }
+
+      out.push(...joined);
+    } else {
+      out.push(lines[i]);
+      i++;
+    }
+  }
+
+  return { text: out.join('\n'), count };
+}
+
+// ═══════════════════════════════════════════════════════
+// 4b. BURSTINESS PASS — vary sentence length so AI uniformity breaks
+//     GPTZero scores burstiness: low variance in length = AI signal.
+//     Strategy: split long sentences at natural break points,
+//     and collapse series of medium sentences into shorter ones.
+// ═══════════════════════════════════════════════════════
+
+function burstisnessPass(text) {
+  let splits = 0;
+
+  // Process line by line to preserve structure; only apply to lines that are prose sentences
+  const lines = text.split('\n');
+  const out = lines.map(line => {
+    const trimmed = line.trim();
+    // Skip short lines (≤ 8 words) — likely list labels/values, not prose
+    if (trimmed.split(/\s+/).length <= 8) return line;
+
+    const rawSents = trimmed.match(/[^.!?]+[.!?]+["']?/g) || [trimmed];
+    // If matched fragments cover <80% of the line (e.g. "John F." grabs just an abbrev.),
+    // fall back to treating the whole line as one sentence so the tail isn't silently dropped
+    const coveredLen = rawSents.reduce((sum, s) => sum + s.length, 0);
+    const sents = coveredLen < trimmed.length * 0.8 ? [trimmed] : rawSents;
+    const result = [];
+
+    for (let i = 0; i < sents.length; i++) {
+      const s = sents[i].trim();
+      if (!s) continue;
+
+      const wc = s.split(/\s+/).length;
+
+      // 1. Break "[A] because [B]" — removes the too-clean causal template
+      const becauseMatch = s.match(/^(.{20,}?)\s+because\s+(.{20,}[.!?]?)$/i);
+      if (becauseMatch) {
+        const left  = becauseMatch[1].trim().replace(/[,.]$/, '');
+        const right = becauseMatch[2].trim().replace(/[.!?]$/, '');
+        const lw = left.split(/\s+/).length;
+        const rw = right.split(/\s+/).length;
+        if (lw >= 8 && rw >= 6) {
+          const rightCap = right.charAt(0).toUpperCase() + right.slice(1);
+          result.push(left + '.');
+          result.push(rightCap + '.');
+          splits++;
+          continue;
+        }
+      }
+
+      // 2b. Break "[Subject] [verb] X but lacks/has no/doesn't Y" — assessment contrast
+      //     "Brings strong delivery and transformation experience but lacks hands-on managed cloud depth"
+      //     Split at "but" when both halves are ≥6 words — breaks the uniform bullet rhythm
+      const butMatch = s.match(/^(.{15,}?)\s+but\s+(lacks?|has no|doesn't|does not|isn't|is not|fails? to)\s+(.{10,}[.!?]?)$/i);
+      if (butMatch) {
+        const left  = butMatch[1].trim().replace(/[,.]$/, '');
+        const mid   = butMatch[2].trim();
+        const right = butMatch[3].trim().replace(/[.!?]$/, '');
+        if (left.split(/\s+/).length >= 6 && right.split(/\s+/).length >= 4) {
+          result.push(left + '.');
+          result.push((mid.charAt(0).toUpperCase() + mid.slice(1)) + ' ' + right + '.');
+          splits++;
+          continue;
+        }
+      }
+
+      // 2c. Break "However, [clause1], has no [X], and has [Y]" — triple negative assessment
+      //     "However, falls short of the required experience, has no people-management experience, and has a more fragmented..."
+      //     Split after the first comma clause
+      if (/^However,/i.test(s) && s.split(',').length >= 3) {
+        const parts = s.replace(/^However,\s*/i, '').split(/,\s*(?:and\s+)?(?=has |lacks |does |isn't |is )/i);
+        if (parts.length >= 2 && parts[0].split(/\s+/).length >= 4) {
+          const first = parts[0].trim().replace(/[.!?]$/, '');
+          const rest  = parts.slice(1).join(', ').trim().replace(/[.!?]$/, '');
+          const firstCap = first.charAt(0).toUpperCase() + first.slice(1);
+          const restCap  = rest.charAt(0).toUpperCase() + rest.slice(1);
+          result.push(firstCap + '.');
+          result.push(restCap + '.');
+          splits++;
+          continue;
+        }
+      }
+
+      // 2. Break very long sentences (≥30 words) at a comma before a conjunction
+      //    Skip dialogue sentences (contain :" or : ") — splitting them destroys the quote structure
+      //    Also skip splits where the right clause starts with a bare verb (no subject) — creates fragments
+      if (wc >= 30 && !/:\s*["""']/.test(s)) {
+        const cutZone = s.slice(Math.floor(s.length * 0.45));
+        const cm = cutZone.match(/,\s+(and|but|so|yet|while|though|although|since|because)\s+/i);
+        if (cm) {
+          const cutPos = Math.floor(s.length * 0.45) + cutZone.indexOf(cm[0]);
+          const left  = s.slice(0, cutPos).trim();
+          const right = s.slice(cutPos + cm[0].length).trim();
+          const rw = right.split(/\s+/).length;
+          // Don't split if right clause starts with an auxiliary/main verb (no subject = fragment)
+          const startsWithVerb = /^(has|have|had|is|are|was|were|does|do|did|will|would|can|could|should|may|might|must|shall)\b/i.test(right);
+          if (rw >= 6 && !startsWithVerb) {
+            const rightCap = right.charAt(0).toUpperCase() + right.slice(1);
+            const leftClean = left.replace(/[,]$/, '');
+            result.push(leftClean + '.');
+            result.push(rightCap.replace(/[.!?]$/, '') + '.');
+            splits++;
+            continue;
+          }
+        }
+      }
+
+      // 2d. Sentence with 4+ comma-separated items (list sentence) — split after item 2
+      //     "Piyush covers technical depth, customer engagement, MEA experience, people-management exposure, availability, and fit..."
+      //     Detect: ≥4 commas, no sub-clause punctuation (no semicolons), ≥18 words
+      if (wc >= 18 && !s.includes(';')) {
+        const commaCount = (s.match(/,/g) || []).length;
+        if (commaCount >= 4) {
+          // Find the 2nd comma and split there
+          let c = 0;
+          let splitIdx = -1;
+          for (let j = 0; j < s.length; j++) {
+            if (s[j] === ',') { c++; if (c === 2) { splitIdx = j; break; } }
+          }
+          if (splitIdx > 0) {
+            const left  = s.slice(0, splitIdx).trim();
+            const right = s.slice(splitIdx + 1).trim().replace(/^,?\s*/, '');
+            if (left.split(/\s+/).length >= 4 && right.split(/\s+/).length >= 5) {
+              const rightCap = right.charAt(0).toUpperCase() + right.slice(1);
+              result.push(left + '.');
+              result.push(rightCap.replace(/^and\s+/i, ''));
+              splits++;
+              continue;
+            }
+          }
+        }
+      }
+
+      result.push(s);
+    }
+
+    return result.join(' ');
+  });
+
+  return { text: out.join('\n'), splits };
+}
+
+// ═══════════════════════════════════════════════════════
+// 5. HUMANIZE helpers
+// ═══════════════════════════════════════════════════════
+
+const THROAT_CLEAR_RE = /^(So,\s+|Well,\s+|Now,\s+|Basically,\s+|Essentially,\s+|Look,\s+|Listen,\s+)/i;
+
+const OPENER_ALTS = {
+  'this':  ['The approach', 'That', 'It'],
+  'the':   ['That', 'This'],
+  'we':    ['Our team', 'The team', 'Together we'],
+  'i':     ['My approach', 'My goal'],
+  'you':   ['Your team', 'Your work'],
+  'it':    ['This', 'The result', 'That'],
+  'they':  ['The team', 'That group'],
+  'these': ['Those', 'Such'],
+  'our':   ['The team\'s', 'My'],
+};
+
+// Fronted adverbials to inject when 3+ sentences share an opener
+const FRONT_ADVERBIALS = [
+  'In practice, ', 'For now, ', 'At its core, ', 'In most cases, ',
+  'On the whole, ', 'In effect, ', 'For context, ', 'As a result, ',
+  'In short, ', 'To be clear, ',
+];
+
+function splitSentences(text) {
+  return text.split(/(?<=[.!?])\s+(?=[A-Z"'])/).filter(s => s.trim().length > 0);
+}
+
+// Split text into processable blocks, always preserving line boundaries.
+// Each \n\n-separated paragraph becomes its own block.
+// Lines within a paragraph are ALWAYS kept as individual line blocks —
+// we never join lines, because email/list line breaks are intentional.
+function splitBlocks(text) {
+  const paras = text.split(/\n\n+/);
+  const blocks = [];
+  for (const para of paras) {
+    const lines = para.split('\n');
+    for (let i = 0; i < lines.length; i++) {
+      const isLastInPara = i === lines.length - 1;
+      const sep = isLastInPara ? '\n\n' : '\n';
+      // Single-line paragraphs → 'para' type (eligible for sentence-level restructuring)
+      // Multi-line paragraph lines → 'line' type (preserve as-is, only word-level rules)
+      const type = lines.length === 1 ? 'para' : 'line';
+      blocks.push({ type, text: lines[i], sep });
+    }
+  }
+  return blocks;
+}
+
+function humanize(text) {
+  // 1. Strip weak intensifiers
+  let intensifierCount = 0;
+  text = text.replace(INTENSIFIER_RE, (match, word, offset, str) => {
+    const after = str.slice(offset + match.length, offset + match.length + 20);
+    if (/^(necessary|required|essential|impossible|certain|sure)\b/i.test(after)) return match;
+    intensifierCount++;
+    return '';
+  });
+
+  const blocks = splitBlocks(text);
+  let sentencesSplit = 0;
+
+  const processedBlocks = blocks.map(block => {
+    // Short list lines — just clean them, don't restructure
+    if (block.type === 'line') {
+      return { ...block, text: block.text.trim() };
+    }
+
+    let sentences = splitSentences(block.text);
+
+    // 2. Break long compound sentences (>28 words) at a conjunction in the middle third
+    sentences = sentences.flatMap(s => {
+      const words = s.trim().split(/\s+/);
+      if (words.length < 29) return [s];
+      const mid = Math.floor(s.length / 3);
+      const end = Math.floor(2 * s.length / 3);
+      const sub = s.slice(mid, end);
+      const cm = sub.match(/,?\s+(and|but|so|yet|while)\s+/i);
+      if (!cm) return [s];
+      const pos = mid + sub.indexOf(cm[0]);
+      const left = s.slice(0, pos).trim().replace(/,$/, '');
+      const rightRaw = s.slice(pos + cm[0].length).trim();
+      // Don't split if right clause starts with an auxiliary verb — would create a subjectless fragment
+      if (/^(has|have|had|is|are|was|were|does|do|did|will|would|can|could|should|may|might|must)\b/i.test(rightRaw)) return [s];
+      const right = rightRaw.charAt(0).toUpperCase() + rightRaw.slice(1);
+      if (left.split(/\s+/).length < 8 || right.split(/\s+/).length < 8) return [s];
+      sentencesSplit++;
+      return [left + '.', right];
+    });
+
+    // 3. Merge true orphan fragments (≤3 words, no auxiliary) onto prior sentence
+    const merged = [];
+    for (let i = 0; i < sentences.length; i++) {
+      const s = sentences[i];
+      const wc = s.trim().split(/\s+/).length;
+      if (i > 0 && wc <= 3 && !/\b(is|are|was|were|has|have|had|do|does|did|will|would|can|could|should|may|might)\b/i.test(s)) {
+        const prev = merged.pop();
+        merged.push(prev.replace(/[.!?]$/, '') + ', ' + s.charAt(0).toLowerCase() + s.slice(1));
+      } else {
+        merged.push(s);
+      }
+    }
+
+    // 4. Remove throat-clearing starters
+    const cleaned = merged.map(s => {
+      const m = s.match(THROAT_CLEAR_RE);
+      if (!m) return s;
+      const rest = s.slice(m[0].length);
+      return rest.charAt(0).toUpperCase() + rest.slice(1);
+    });
+
+    // 5. Vary repeated sentence openers
+    // First pass: simple word-swap from OPENER_ALTS
+    let varied = cleaned.map((s, i) => {
+      if (i === 0) return s;
+      const prevWord = cleaned[i-1].trim().split(/\s+/)[0].replace(/\W/g,'').toLowerCase();
+      const curWord  = s.trim().split(/\s+/)[0].replace(/\W/g,'').toLowerCase();
+      if (prevWord !== curWord) return s;
+      const alts = OPENER_ALTS[curWord];
+      if (!alts) return s;
+      const alt = alts.find(a => !cleaned[i-1].startsWith(a)) || alts[0];
+      const firstToken = s.match(/^\S+/)[0];
+      return alt + s.slice(firstToken.length);
+    });
+
+    // Second pass: if 3+ sentences in a row start with same word, inject a fronted adverbial
+    for (let i = 2; i < varied.length; i++) {
+      const w0 = varied[i-2].trim().split(/\s+/)[0].replace(/\W/g,'').toLowerCase();
+      const w1 = varied[i-1].trim().split(/\s+/)[0].replace(/\W/g,'').toLowerCase();
+      const w2 = varied[i].trim().split(/\s+/)[0].replace(/\W/g,'').toLowerCase();
+      if (w0 === w1 && w1 === w2) {
+        const adv = FRONT_ADVERBIALS[i % FRONT_ADVERBIALS.length];
+        varied[i] = adv + varied[i].charAt(0).toLowerCase() + varied[i].slice(1);
+      }
+    }
+
+    return { ...block, text: varied.join(' ') };
+  });
+
+  // Reconstruct full text preserving line separators
+  let result = '';
+  for (const block of processedBlocks) {
+    result += block.text + block.sep;
+  }
+
+  return { text: result.trimEnd(), intensifierCount, sentencesSplit };
+}
+
+// ═══════════════════════════════════════════════════════
+// 6. READABILITY  — Flesch Reading Ease
+// ═══════════════════════════════════════════════════════
+
+function countSyllables(word) {
+  word = word.toLowerCase().replace(/[^a-z]/g, '');
+  if (!word) return 0;
+  if (word.length <= 3) return 1;
+  word = word.replace(/(?:[^laeiouy]es|ed|[^laeiouy]e)$/, '');
+  word = word.replace(/^y/, '');
+  const m = word.match(/[aeiouy]{1,2}/g);
+  return m ? m.length : 1;
+}
+
+function fleschScore(text) {
+  const words = text.trim().split(/\s+/).filter(w => w.length > 0);
+  const sentences = text.split(/[.!?]+/).filter(s => s.trim().length > 0);
+  if (words.length < 5 || sentences.length < 1) return null;
+  const totalSyllables = words.reduce((s, w) => s + countSyllables(w), 0);
+  const score = 206.835
+    - 1.015  * (words.length / sentences.length)
+    - 84.6   * (totalSyllables / words.length);
+  return Math.round(Math.max(0, Math.min(100, score)));
+}
+
+// ═══════════════════════════════════════════════════════
+// 7. PRE-PROCESS  — strip AI formatting artifacts before rule passes
+// ═══════════════════════════════════════════════════════
+
+function preProcess(text) {
+  // 1. Strip AI-decorative emoji used as bullet replacements or section headers.
+  //    These are the classic AI "sprinkle" patterns: ✨🔑💡📌🎯🚀(at line start)➡️🔹🔸▶️◆
+  //    Human voice emoji (🎉 ✅ 🚀 at end of sentence, standalone) are preserved.
+  //    Strategy: remove emoji that appear AT THE START of a line (AI bullet substitute),
+  //    or are from the known-decorative set anywhere in text.
+  const AI_DECO_EMOJI = /[✨\u{1F511}\u{1F4A1}\u{1F4CC}\u{1F3AF}➡️\u{1F539}\u{1F538}▶◆\u{1F4CD}\u{1F4CB}\u{1F4DD}\u{1F4E2}\u{1F4E3}\u{1F4CA}\u{1F4C8}\u{1F4C9}\u{1F527}\u{1F6A9}]/gu;
+  // Remove known AI-decorative icons wherever they appear
+  text = text.replace(AI_DECO_EMOJI, '');
+  // Remove ANY emoji used as a line-start bullet substitute
+  text = text.replace(/^[\u{1F000}-\u{1FFFF}\u{2600}-\u{27BF}][️]?\s*/gmu, '');
+  // Remove variation selectors (invisible modifiers that add nothing)
+  text = text.replace(/[\u{FE00}-\u{FE0F}]/gu, '');
+  // Clean up spaces left by stripped emoji (but preserve newlines)
+  text = text.replace(/[ \t]+/g, ' ').replace(/^ | $/gm, '');
+
+  // 2. Em dash / en dash: preserve as-is. They are legitimate punctuation in professional
+  //    writing and titles. Replacing them was causing more damage than it fixed.
+
+  // 3. Markdown heading markers: ## Heading → Heading (keep text, drop #s)
+  text = text.replace(/^#{1,6}\s+/gm, '');
+
+  // 4. Bold/italic markdown: **text** or *text* or __text__ or _text_ → text
+  text = text.replace(/(\*\*|__)(.*?)\1/gs, '$2');
+  text = text.replace(/(\*|_)(.*?)\1/gs, '$2');
+
+  // 5. Inline code backticks: `code` → code
+  text = text.replace(/`([^`]+)`/g, '$1');
+
+  // 6. Horizontal rules: ---, ***, ___ on their own line → empty line
+  text = text.replace(/^[-*_]{3,}\s*$/gm, '');
+
+  // 7. Bullet/list markers at line start: - item or * item or • item → item
+  //    Only strip decorative bullets (not numbered lists — those preserve structure)
+  text = text.replace(/^[ \t]*[•]\s+/gm, '');   // bullet • only, not - or *
+  // Note: do NOT strip numbered list markers (1. 2.) — they preserve human structure
+
+  // 8. Horizontal rules: ---, ***, ___ on their own line → empty line (already done above)
+
+  // 9. Trailing commas introduced by em-dash removal before sentence end
+  text = text.replace(/,\s*([.!?])/g, '$1');
+
+  // 10. Double-commas from back-to-back removals
+  text = text.replace(/,\s*,/g, ',');
+
+  // 11. Collapse 3+ blank lines to 2, but KEEP single newlines (preserve list structure)
+  text = text.replace(/\n{3,}/g, '\n\n');
+
+  return text.trim();
+}
+
+// ═══════════════════════════════════════════════════════
+// 8. POST-PROCESS  — artifact cleanup
+// ═══════════════════════════════════════════════════════
+
+function postProcess(text) {
+  text = text.replace(/[ \t]{2,}/g, ' ');          // collapse horizontal spaces only
+  text = text.replace(/[ \t]*,[ \t]*,/g, ',');
+  text = text.replace(/^[ \t]*,[ \t]*/gm, '');
+  text = text.replace(/[ \t]+([.,!?])/g, '$1');
+  text = text.replace(/\.\.+/g, '.');
+  text = text.replace(/\.,/g, '.');
+  text = text.replace(/\n{3,}/g, '\n\n');          // cap blank lines at 2, keep singles
+  // Re-capitalize after sentence-ending punctuation (within same line)
+  text = text.replace(/([.!?] +)([a-z])/g, (_, p, l) => p + l.toUpperCase());
+  // Capitalize first char of a line only when it starts a new paragraph (preceded by blank
+  // line or is at start of text) — avoids force-capitalising intentional continuation lines.
+  text = text.replace(/(^|\n\n)([a-z])/g, (_, pre, ch) => pre + ch.toUpperCase());
+  text = text.replace(/[ \t]{2,}/g, ' ').trim();
+  return text;
+}
+
+// ═══════════════════════════════════════════════════════
+// 9. CORE PIPELINE
+// ═══════════════════════════════════════════════════════
+
+function applyRules(text, rules) {
+  let count = 0;
+  for (const rule of rules) {
+    const before = text;
+    text = text.replace(rule.pattern, rule.r);
+    if (text !== before) count++;
+  }
+  return { text, count };
+}
+
+function applyContractions(text) {
+  let count = 0;
+  for (const rule of CONTRACTION_RULES) {
+    const before = text;
+    text = text.replace(rule.pattern, rule.r);
+    if (text !== before) count++;
+  }
+  return { text, count };
+}
+
+// ═══════════════════════════════════════════════════════
+// STRUCTURAL REWRITE PASS
+// Rewrites whole-sentence AI templates. Each rule is a
+// {test, rewrite} pair — test matches the full line,
+// rewrite returns the replacement. Safer than mid-sentence
+// regex that creates artifacts.
+// ═══════════════════════════════════════════════════════
+
+function structuralRewrite(text) {
+  let count = 0;
+
+  // Rules: [ test_regex, rewrite_fn ]
+  // test_regex matches the FULL line (or a dominant phrase in it)
+  // rewrite_fn receives the full regex match + capture groups
+  const STRUCT_RULES = [
+
+    // "You're now much closer to passing X than any member is to catching you."
+    [/\bYou'?re?\s+now\s+(?:much\s+)?closer\s+to\s+passing\s+([\w\s]+?)\s+than\s+any\s+\w+\s+is\s+to\s+catching\s+you[.!]?/i,
+     (m, target) => `You're well ahead of ${target.trim()} at this point.`],
+
+    // "If you keep up those X days, the next [goal] is [no longer / isn't anymore] [defending/Y]."
+    [/\bIf\s+you\s+(?:continue|keep\s+up)\s+([\w\s]+?),\s+the\s+next\s+(?:goal|milestone|target|step)\s+(?:is(?:n't)?\s+)?(?:no\s+longer\s+|not\s+anymore\s+|anymore\s+)?([^.!?]{5,})[.!]?/i,
+     (m, cond, nxt) => `Keep up ${cond.trim()} and ${nxt.trim()} becomes the next challenge.`],
+
+    // "It's becoming #1 overall in the entire group."
+    [/\bIt'?s?\s+becoming\s+(#?(?:\d+|first|second|third))\s+(overall\b[^.!?]*?)[.!]?\s*$/i,
+     (m, rank, scope) => `Going for ${rank} ${scope.trim()} is now a real target.`],
+
+    // "You've/You have [effectively] locked up #1 among members."
+    [/\bYou(?:'ve|\s+have)\s+(?:effectively\s+)?locked\s+up\s+(#?\w+)\s+among\s+([\w\s]+?)[.!]?$/i,
+     (m, rank, grp) => `${rank} in ${grp.trim()} is yours.`],
+
+    // "That's [much] faster than [earlier guesses/expected] because [reason]."
+    [/\bThat'?s?\s+(?:much\s+)?faster\s+than\s+([\w\s]+?)\s+because\s+([^.!?]{8,})[.!]?/i,
+     (m, prev, reason) => `Faster than ${prev.trim()}. ${reason.trim().charAt(0).toUpperCase() + reason.trim().slice(1)}.`],
+
+    // "You would likely pass her in approximately X days."
+    [/\bYou\s+would\s+likely\s+pass\s+(\w+)\s+in\s+(?:approximately\s+|about\s+)?([\w\s\-–]+days?)[.!]?/i,
+     (m, name, time) => `At this rate, ${name} falls behind you in ${time.trim()}.`],
+
+    // "Assuming X remains around Y:"
+    [/^Assuming\s+([\w\s]+?)\s+remains?\s+around\s+([\w.k]+)[:]?$/i,
+     (m, who, val) => `If ${who.trim()} stays near ${val.trim()}:`],
+
+    // "X is now much closer to Y"  (generic)
+    [/\b([\w']+(?:\s+[\w']+){0,3})\s+(?:is|are)\s+now\s+much\s+closer\s+to\s+([\w\s]+)/i,
+     (m, subj, dest) => `${subj} is closing in on ${dest.trim()}`],
+
+    // "X has become [much] higher/lower/better/worse"
+    [/\b([\w\s']+?)\s+has\s+become\s+(?:much\s+)?(higher|lower|better|worse|faster|slower)\b/i,
+     (m, subj, dir) => `${subj.trim()} is ${dir} now`],
+
+    // "That's much faster than expected because your average has become higher."
+    // (catches residual after rule 5 — the "become higher" leftover)
+    [/\bhas\s+become\s+(?:much\s+)?(higher|lower|better|worse)\b/i,
+     (m, dir) => `went ${dir === 'higher' || dir === 'better' ? 'up' : 'down'}`],
+
+    // "your own average is now much higher" → "your average jumped"
+    [/\byour\s+own\s+(average|pace|rate|score|total)\s+is\s+(?:now\s+)?(?:much\s+)?(higher|lower|better|worse|faster|slower)\b/i,
+     (m, metric, dir) => `your ${metric} ${dir === 'higher' || dir === 'better' || dir === 'faster' ? 'jumped' : 'dropped'}`],
+
+    // "Right now:" standalone (leftover from current situation rule — handled in SLOP_RULES now)
+    // kept as safety net
+    [/^Right\s+now\s*[:]?$/i,
+     () => `Where things stand:`],
+
+    // ── AI rhetorical binary questions: "Does/Can the employee X, or are they Y?" ──
+    // Greedy: hits the LAST ", or are/is they" (handles mid-sentence "or" like "product or a process")
+    // "Can the employee X?" → "The employee can X."
+    // "Does the employee X?" → "The employee Xs." (positive already conjugated)
+    [/^((?:\d+\.\s+)?[\w\s]+:\s*)(Does|Can)\s+the\s+employee\s+(.+),\s+or\s+(?:are|is)\s+they\s+[^?]+\?$/i,
+     (m, label, modal, positive) => {
+       const p = positive.trim();
+       if (/^can$/i.test(modal)) return `${label}The employee can ${p[0].toLowerCase()}${p.slice(1)}.`;
+       return `${label}The employee ${p[0].toLowerCase()}${p.slice(1)}.`;
+     }],
+
+    // "Does this role allow the employee to X, or is every single move Y?"
+    [/^((?:\d+\.\s+)?[\w\s]+:\s*)Does\s+this\s+role\s+allow\s+the\s+employee\s+to\s+(.+),\s+or\s+is\s+[^?]+\?$/i,
+     (m, label, positive) => {
+       // conjugate first verb: "drive their own schedule" → "drives their own schedule"
+       const conj = positive.trim().replace(/^(\w+)/, v => v + 's');
+       return `${label}The employee ${conj}.`;
+     }],
+
+    // "Does the employee understand/know/see X?" (direct question, no binary)
+    [/^((?:\d+\.\s+)?[\w\s]+:\s*)Does\s+the\s+employee\s+(understand|know|see|grasp|recognize)\s+(.+)\?$/i,
+     (m, label, verb, rest) => `${label}The employee ${verb}s ${rest.trim()}.`],
+
+    // "These elements drive three/four/N essential/core/fundamental psychological states — X, Y, and Z —
+    //  creating an environment where individuals feel A, B, and C."
+    [/These\s+elements\s+drive\s+(?:\w+\s+)*(?:psychological\s+states?|dimensions?|factors?)\s*[-–—,]\s*([^–—,]+(?:[,]\s*[^–—,]+)*)\s*[-–—,][^.]+?\bwhere\s+individuals?\s+feel\s+([^.]+)\./i,
+     (m, states, feelings) => {
+       const stateList = states.split(/,\s*(?:and\s+)?/).map(s => s.trim()).filter(Boolean);
+       const feelList  = feelings.split(/,\s*(?:and\s+)?/).map(s => s.trim()).filter(Boolean);
+       const lastState = stateList.pop();
+       const lastFeel  = feelList.pop();
+       const statesStr = stateList.length ? stateList.join(', ') + ' and ' + lastState : lastState;
+       const feelsStr  = feelList.length  ? feelList.join(', ')  + ' and ' + lastFeel  : lastFeel;
+       return `When ${statesStr} are in place, people show up ${feelsStr}.`;
+     }],
+
+    // "Now we can see that X isn't Y; it's Z."  →  "X isn't Y. It's Z."
+    [/Now\s+we\s+can\s+see\s+that\s+([^;.]+?);\s+it'?s?\s+([^.]+)\./i,
+     (m, clause1, clause2) => `${clause1.trim().charAt(0).toUpperCase()}${clause1.trim().slice(1)}. It's ${clause2.trim()}.`],
+
+    // "X isn't something we provide; it's something we embed/build/create"
+    [/([A-Z][^;.]+?)\s+isn'?t\s+something\s+we\s+provide;\s+it'?s\s+something\s+we\s+(\w+)\s+([^.]+)\./i,
+     (m, subj, verb, rest) => `You can't hand ${subj.toLowerCase()} to someone. You ${verb} it ${rest.trim()}.`],
+  ];
+
+  const lines = text.split('\n');
+  const out = lines.map(line => {
+    const trimmed = line.trim();
+    if (!trimmed) return line;
+
+    let s = trimmed;
+    const before = s;
+
+    for (const [re, fn] of STRUCT_RULES) {
+      s = s.replace(re, fn);
+      if (s !== before) break; // one structural change per line — avoids double-firing
+    }
+
+    if (s !== before) {
+      count++;
+      s = s.charAt(0).toUpperCase() + s.slice(1);
+      // Ensure sentence ends with punctuation
+      if (s.length > 0 && !/[.!?:]$/.test(s)) s += '.';
+    }
+    return s;
+  });
+
+  return { text: out.join('\n'), count };
+}
+
+function countFormattingStrips(original, processed) {
+  // Count emoji stripped
+  const emojiRe = /[\u{1F300}-\u{1FFFF}☀-➿\u{FE00}-\u{FE0F}]/gu;
+  const emojiCount = (original.match(emojiRe) || []).length;
+  // Em/en dashes are no longer converted — don't count them
+  // Count markdown headers
+  const headerCount = (original.match(/^#{1,6}\s+/gm) || []).length;
+  // Count bold/italic markers (pairs)
+  const boldCount = (original.match(/\*\*[^*]+\*\*/g) || []).length
+                  + (original.match(/__[^_]+__/g) || []).length;
+  return emojiCount + headerCount + boldCount;
+}
+
+function cleanText(rawText) {
+  // Pass 0a: bullet rhythm — must run BEFORE pre-process strips bullet markers
+  const { text: tBullet, count: bulletJoins } = bulletRhythmPass(rawText);
+
+  // Pass 0b: pre-process (emoji, em-dashes, markdown)
+  const preProcessed = preProcess(tBullet);
+  const formatStrips = countFormattingStrips(rawText, preProcessed);
+  let text = preProcessed;
+
+  // Pass 1: slop (includes GPTZero-targeted perplexity rules)
+  let { text: t1, count: slopCount } = applyRules(text, SLOP_RULES);
+  text = postProcess(t1);
+
+  // Pass 2: bloat
+  let { text: t2, count: bloatCount } = applyRules(text, BLOAT_RULES);
+  text = postProcess(t2);
+
+  // Pass 3: contractions
+  let { text: t3, count: contractionCount } = applyContractions(text);
+  text = postProcess(t3);
+
+  // Pass 4: burstiness — break causal chains and very long sentences
+  const { text: t4b, splits: burstSplits } = burstisnessPass(text);
+  text = postProcess(t4b);
+
+  // Pass 5: structural sentence rewrites — attack AI sentence templates
+  const { text: t5s, count: rewriteCount } = structuralRewrite(text);
+  text = postProcess(t5s);
+
+  // Pass 6: humanize (structure + rhythm + intensifiers)
+  const { text: t6, intensifierCount, sentencesSplit } = humanize(text);
+  text = postProcess(t6);
+
+  const totalSplits = sentencesSplit + burstSplits;
+  return { cleaned: text, slopCount: slopCount + rewriteCount + bulletJoins, bloatCount, contractionCount, intensifierCount, sentencesSplit: totalSplits, formatStrips };
+}
+
+function countWords(text) {
+  return text.trim() ? text.trim().split(/\s+/).length : 0;
+}
+
+// ═══════════════════════════════════════════════════════
+// 9. DETECT  — for live badge + found list
+// ═══════════════════════════════════════════════════════
+
+function detect(text) {
+  const found = [];
+  const allRules = [...SLOP_RULES, ...BLOAT_RULES];
+  for (const rule of allRules) {
+    const flags = rule.pattern.flags.includes('g') ? rule.pattern.flags : rule.pattern.flags + 'g';
+    const matches = [...text.matchAll(new RegExp(rule.pattern.source, flags))];
+    if (matches.length > 0) {
+      found.push({ label: rule.label, count: matches.length });
+    }
+  }
+  return found;
+}
+
+// ═══════════════════════════════════════════════════════
+// 10. WORD-LEVEL DIFF
+// ═══════════════════════════════════════════════════════
+
+// Tokenize into words + whitespace/punctuation tokens so we can reconstruct exact spacing
+function tokenize(text) {
+  // Split on whitespace boundaries, keeping whitespace as tokens
+  return text.split(/(\s+)/).filter(t => t.length > 0);
+}
+
+// Longest Common Subsequence on token arrays (word-level, ignoring whitespace tokens)
+function lcs(a, b) {
+  const m = a.length, n = b.length;
+  // Use two-row DP to save memory
+  let prev = new Uint16Array(n + 1);
+  let curr = new Uint16Array(n + 1);
+  // Build table but only store the backtrace we need via a flat array
+  const dp = new Array(m + 1).fill(null).map(() => new Uint16Array(n + 1));
+  for (let i = 1; i <= m; i++) {
+    for (let j = 1; j <= n; j++) {
+      if (a[i-1] === b[j-1]) {
+        dp[i][j] = dp[i-1][j-1] + 1;
+      } else {
+        dp[i][j] = Math.max(dp[i-1][j], dp[i][j-1]);
+      }
+    }
+  }
+  // Traceback
+  const common = [];
+  let i = m, j = n;
+  while (i > 0 && j > 0) {
+    if (a[i-1] === b[j-1]) {
+      common.push([i-1, j-1]);
+      i--; j--;
+    } else if (dp[i-1][j] >= dp[i][j-1]) {
+      i--;
+    } else {
+      j--;
+    }
+  }
+  return common.reverse();
+}
+
+// Build diff ops: [{type:'eq'|'del'|'ins', val:string}]
+function diffTokens(oldText, newText) {
+  // Work only on non-whitespace tokens for the LCS, then reconstruct
+  const oldToks = oldText.split(/(\s+)/);
+  const newToks = newText.split(/(\s+)/);
+
+  // Filter to just word tokens (non-whitespace) with their original indices
+  const oldWords = oldToks.map((t, i) => ({ t, i })).filter(x => x.t.trim().length > 0);
+  const newWords = newToks.map((t, i) => ({ t, i })).filter(x => x.t.trim().length > 0);
+
+  const oa = oldWords.map(x => x.t.toLowerCase());
+  const na = newWords.map(x => x.t.toLowerCase());
+
+  // Bail out on very large texts to avoid freezing (>600 word-tokens each)
+  if (oa.length > 600 || na.length > 600) {
+    return [{ type: 'ins', val: newText }];
+  }
+
+  const common = lcs(oa, na);
+
+  const ops = [];
+  let oi = 0, ni = 0, ci = 0;
+
+  while (ci < common.length) {
+    const [coi, cni] = common[ci];
+    // deleted words before this common point
+    while (oi < coi) {
+      ops.push({ type: 'del', val: oldWords[oi].t });
+      oi++;
+    }
+    // inserted words before this common point
+    while (ni < cni) {
+      ops.push({ type: 'ins', val: newWords[ni].t });
+      ni++;
+    }
+    ops.push({ type: 'eq', val: newWords[ni].t });
+    oi++; ni++; ci++;
+  }
+  // remaining deletions
+  while (oi < oldWords.length) {
+    ops.push({ type: 'del', val: oldWords[oi].t });
+    oi++;
+  }
+  // remaining insertions
+  while (ni < newWords.length) {
+    ops.push({ type: 'ins', val: newWords[ni].t });
+    ni++;
+  }
+
+  return ops;
+}
+
+function renderDiff(oldText, newText, showDiff) {
+  if (!showDiff) {
+    // Preserve newlines as <br> in plain mode
+    return escapeHtml(newText).replace(/\n/g, '<br>');
+  }
+
+  const ops = diffTokens(oldText, newText);
+  let html = '';
+
+  for (let i = 0; i < ops.length; i++) {
+    const op = ops[i];
+    const next = ops[i + 1];
+    const esc = escapeHtml(op.val);
+
+    if (op.type === 'eq') {
+      html += esc;
+    } else if (op.type === 'del') {
+      html += `<span class="diff-del">${esc}</span>`;
+    } else if (op.type === 'ins') {
+      html += `<span class="diff-add">${esc}</span>`;
+    }
+
+    // After each word token, emit the original whitespace (preserving newlines as <br>)
+    // If next token exists and isn't punctuation, add a space; if it's a newline context, add <br>
+    if (i < ops.length - 1) {
+      const nextVal = ops[i+1]?.val || '';
+      if (!/^[.,!?;:)}\]'"»]/.test(nextVal)) {
+        html += ' ';
+      }
+    }
+  }
+
+  // If output has newlines, do line-by-line diff to preserve structure
+  if (newText.includes('\n')) {
+    const oldLines = oldText.split('\n');
+    const newLines = newText.split('\n');
+    return newLines.map((newLine, i) => {
+      const oldLine = oldLines[i] ?? '';
+      if (newLine === oldLine) return escapeHtml(newLine);
+      // Inline word-level diff per line
+      const lineOps = diffTokens(oldLine, newLine);
+      let lineHtml = '';
+      for (let j = 0; j < lineOps.length; j++) {
+        const lop = lineOps[j];
+        const lesc = escapeHtml(lop.val);
+        if (lop.type === 'eq')  lineHtml += lesc;
+        else if (lop.type === 'del') lineHtml += `<span class="diff-del">${lesc}</span>`;
+        else if (lop.type === 'ins') lineHtml += `<span class="diff-add">${lesc}</span>`;
+        if (j < lineOps.length - 1) {
+          const nextVal = lineOps[j+1]?.val || '';
+          if (!/^[.,!?;:)}\]'"»]/.test(nextVal)) lineHtml += ' ';
+        }
+      }
+      return lineHtml || escapeHtml(newLine);
+    }).join('<br>');
+  }
+
+  return html;
+}
+
+// ═══════════════════════════════════════════════════════
+// 11. UI
+// ═══════════════════════════════════════════════════════
+
+let highlightOn = false;
+let lastFound   = [];
+let showDiff    = true;
+let lastInput   = '';
+let lastCleaned = '';
+
+function onInput() {
+  const text = document.getElementById('input').value;
+  const found = detect(text);
+  lastFound = found;
+  const total = found.reduce((s, f) => s + f.count, 0);
+
+  const badge = document.getElementById('badge-slop');
+  if (total > 0) {
+    badge.textContent = total + ' issues';
+    badge.classList.remove('badge-hidden');
+  } else {
+    badge.classList.add('badge-hidden');
+  }
+
+  if (highlightOn) renderHighlight(text, found);
+  renderFoundList(found);
+}
+
+function clean() {
+  const text = document.getElementById('input').value.trim();
+  if (!text) return;
+
+  const found = detect(text);
+  const { cleaned, slopCount, bloatCount, contractionCount, intensifierCount, sentencesSplit, formatStrips } = cleanText(text);
+
+  lastInput   = text;
+  lastCleaned = cleaned;
+
+  // Hidden textarea for copy
+  document.getElementById('output').value = cleaned;
+
+  // Diff display
+  document.getElementById('output-display').innerHTML = renderDiff(text, cleaned, showDiff);
+
+  const totalIssues = found.reduce((s, f) => s + f.count, 0);
+  document.getElementById('stat-in-words').textContent    = countWords(text);
+  document.getElementById('stat-out-words').textContent   = countWords(cleaned);
+  document.getElementById('stat-slop').textContent        = totalIssues;
+  document.getElementById('stat-format').textContent      = formatStrips;
+  document.getElementById('stat-contractions').textContent = contractionCount;
+  document.getElementById('stat-bloat').textContent       = bloatCount;
+  document.getElementById('stat-splits').textContent      = sentencesSplit;
+  document.getElementById('stat-intensifiers').textContent = intensifierCount;
+
+  const fs = fleschScore(cleaned);
+  if (fs !== null) {
+    document.getElementById('stat-flesch').textContent = fs;
+    document.getElementById('stat-flesch').className = 'stat-val ' +
+      (fs >= 60 ? 'green' : fs >= 40 ? 'yellow' : 'red');
+    const fill = document.getElementById('flesch-fill');
+    fill.style.width = fs + '%';
+    fill.style.background = fs >= 60 ? 'var(--green)' : fs >= 40 ? 'var(--yellow)' : 'var(--red)';
+  }
+
+  const badge = document.getElementById('badge-clean');
+  badge.textContent = (slopCount + bloatCount + contractionCount + intensifierCount + sentencesSplit + formatStrips) + ' fixed';
+  badge.classList.remove('badge-hidden');
+}
+
+function toggleDiff() {
+  showDiff = document.getElementById('diff-toggle').checked;
+  if (lastCleaned) {
+    document.getElementById('output-display').innerHTML = renderDiff(lastInput, lastCleaned, showDiff);
+  }
+}
+
+function copyOutput() {
+  const val = document.getElementById('output').value;
+  if (!val) return;
+  navigator.clipboard.writeText(val).then(() => {
+    const btn = document.querySelector('.btn-copy');
+    btn.textContent = 'Copied!';
+    setTimeout(() => btn.textContent = 'Copy', 1500);
+  });
+}
+
+function clearAll() {
+  document.getElementById('input').value = '';
+  document.getElementById('output').value = '';
+  document.getElementById('output-display').innerHTML = '';
+  lastInput = ''; lastCleaned = '';
+  ['badge-slop','badge-clean'].forEach(id => document.getElementById(id).classList.add('badge-hidden'));
+  document.getElementById('preview-in').style.display = 'none';
+  document.getElementById('found-list').style.display = 'none';
+  ['stat-in-words','stat-out-words','stat-slop','stat-format','stat-contractions',
+   'stat-bloat','stat-splits','stat-intensifiers','stat-flesch']
+    .forEach(id => { document.getElementById(id).textContent = '—'; });
+  document.getElementById('flesch-fill').style.width = '0%';
+  lastFound = [];
+}
+
+function toggleHighlight() {
+  highlightOn = document.getElementById('highlight-toggle').checked;
+  const previewEl = document.getElementById('preview-in');
+  const inputEl   = document.getElementById('input');
+  if (highlightOn) {
+    inputEl.style.display = 'none';
+    previewEl.style.display = 'block';
+    renderHighlight(inputEl.value, lastFound);
+  } else {
+    inputEl.style.display = 'block';
+    previewEl.style.display = 'none';
+  }
+}
+
+function renderHighlight(text, found) {
+  const el = document.getElementById('preview-in');
+  if (!highlightOn) return;
+  const allRules = [...SLOP_RULES, ...BLOAT_RULES];
+  const patterns = allRules
+    .filter(r => found.some(f => f.label === r.label))
+    .map(r => r.pattern.source);
+  if (!patterns.length) { el.innerHTML = escapeHtml(text); return; }
+  try {
+    const combined = new RegExp('(' + patterns.join('|') + ')', 'gi');
+    // Escape first, then wrap matches — do NOT re-escape the matched portion (already escaped)
+    el.innerHTML = escapeHtml(text).replace(combined, m => `<mark>${m}</mark>`);
+  } catch(e) {
+    el.innerHTML = escapeHtml(text);
+  }
+}
+
+function renderFoundList(found) {
+  const el = document.getElementById('found-list');
+  if (!found.length) { el.style.display = 'none'; return; }
+  el.style.display = 'block';
+  el.innerHTML = found.map(f => `<span title="${f.count}×">${f.label} ×${f.count}</span>`).join('');
+}
+
+function escapeHtml(text) {
+  return text
+    .replace(/&/g,'&amp;').replace(/</g,'&lt;')
+    .replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+</script>
+</body>
+</html>
