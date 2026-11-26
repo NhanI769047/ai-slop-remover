@@ -998,10 +998,24 @@ const BLOAT_RULES = [
   { label: "Please find enclosed",  pattern: /\bPlease find enclosed\b/gi,                        r: "Enclosed:" },
   { label: "do not hesitate to",    pattern: /\b[Pp]lease do not hesitate to (contact|reach out|get in touch)[^.]*\./gi, r: "Please do not hesitate to contact me if you have any questions." },
   { label: "feel free to reach out",pattern: /\b[Ff]eel free to (reach out|contact me|get in touch)[^.]*\./gi,          r: "Please feel free to reach out should you have any questions." },
-  { label: "Just let me know",      pattern: /\bJust let me know[.,]?/gi,                         r: "Please let me know." },
-  { label: "Happy to jump on a call",pattern:/\bHappy to (jump on|hop on|schedule|arrange) a (quick )?call[^.]*\./gi,  r: "I would be happy to discuss this further at your convenience." },
-  { label: "Happy to call",         pattern: /\bHappy to call if (that's|it's) easier[.,]?/gi,    r: "I would be happy to discuss this further at your convenience." },
+  { label: "Just let me know",      pattern: /\bJust let me know[.,]?/gi,                         r: "Let me know." },
+  { label: "Happy to jump on a call",pattern:/\bHappy to (jump on|hop on|schedule|arrange) a (quick )?call[^.]*\./gi,  r: "Happy to talk it through if that's easier." },
+  { label: "Happy to call",         pattern: /\bHappy to call if (that's|it's) easier[.,]?/gi,    r: "Happy to call if that's easier." },
   { label: "I'd value your steer",  pattern: /\bI'?d value your steer on\b/gi,                    r: "I would appreciate your guidance on" },
+  // ── AI politeness-padding → plain direct phrasing ─────────────────────────
+  // Targets the over-hedged "I would appreciate it if you could X" cadence that
+  // makes routine email read as AI-written. Output stays plain and human.
+  { label: "I would appreciate it if you could",
+                                    pattern: /\bI(?:'d| would)(?: also| really)? appreciate it if you could\b/gi, r: "please" },
+  { label: "I would be grateful if you could",
+                                    pattern: /\bI(?:'d| would)(?: also)? be grateful if you could\b/gi,          r: "please" },
+  { label: "it would be great if you could",
+                                    pattern: /\bit would be (?:great|helpful|wonderful) if you could\b/gi,        r: "please" },
+  { label: "if you could kindly",   pattern: /\bif you could kindly\b/gi,                           r: "please" },
+  { label: "I just wanted to",      pattern: /\bI just wanted to\b/gi,                              r: "I wanted to" },
+  { label: "I was wondering if",    pattern: /\bI was wondering if you(?:'d| would) be able to\b/gi, r: "could you" },
+  { label: "there may be X causing", pattern: /\bthere may be (a |an )?([\w\s-]+?) causing the (discrepancy|issue|problem|difference)\b/gi,
+                                    r: (_, art, thing, kind) => `${art || 'a '}${thing.trim()} may be causing it` },
   { label: "I'm not seeing a realistic path", pattern: /\bI'?m not seeing a realistic path to (filling|hiring|sourcing|finding)\b/gi,
                                       r: (_, v) => `I do not see a viable path to ${v.replace(/ing$/, 'ing')}` },
   { label: "realistic path generic", pattern: /\bI'?m not seeing a realistic path to\b/gi,         r: "I do not see a viable path to" },
@@ -1009,7 +1023,7 @@ const BLOAT_RULES = [
   { label: "filling these internally", pattern: /\bfilling these (?:roles )?internally\b/gi,        r: "filling these roles from within the organisation" },
   { label: "remains a firm requirement", pattern: /\bremains a firm requirement\b/gi,             r: "remains a firm requirement" },
   { label: "is still required",     pattern: /\bis still required\b/gi,                           r: "remains a firm requirement" },
-  { label: "at this stage",         pattern: /,?\s*\bat this (stage|juncture|point)\b/gi,          r: "" },
+  { label: "at this stage",         pattern: /\bat this (stage|juncture|point)\b,?[ \t]*/gi,       r: "" },
   { label: "Given what I shared",   pattern: /\bGiven what I (shared|mentioned) earlier\b/gi,     r: "Given what I outlined" },
   { label: "Based on what I said",  pattern: /\bBased on what I said\b/gi,                        r: "Given what I outlined" },
   { label: "I'd expect",            pattern: /\bI'?d expect\b/gi,                                 r: "I would anticipate" },
@@ -1826,31 +1840,79 @@ function cleanText(rawText) {
   // Pass 0b: pre-process (emoji, em-dashes, markdown)
   const preProcessed = preProcess(tBullet);
   const formatStrips = countFormattingStrips(rawText, preProcessed);
-  let text = preProcessed;
 
-  // Pass 1: slop (includes GPTZero-targeted perplexity rules)
-  let { text: t1, count: slopCount } = applyRules(text, SLOP_RULES);
-  text = postProcess(t1);
+  const wordCount = rawText.trim().split(/\s+/).length;
 
-  // Pass 2: bloat
-  let { text: t2, count: bloatCount } = applyRules(text, BLOAT_RULES);
-  text = postProcess(t2);
+  // ── Paragraph-isolated cleaning ────────────────────────────────────────────
+  // Every word-level and structural pass runs INSIDE a single paragraph. This
+  // guarantees no rule's \s* can ever consume a \n\n paragraph break and fuse
+  // two paragraphs together (the root cause of the scrambled output). We split
+  // on blank lines, clean each paragraph independently, then rejoin with \n\n.
+  const paragraphs = preProcessed.split(/\n{2,}/);
 
-  // Pass 3: contractions
-  let { text: t3, count: contractionCount } = applyContractions(text);
-  text = postProcess(t3);
+  let slopCount = 0, bloatCount = 0, contractionCount = 0;
+  let rewriteCount = 0, burstSplits = 0, sentencesSplit = 0, intensifierCount = 0;
 
-  // Pass 4: burstiness — break causal chains and very long sentences
-  const { text: t4b, splits: burstSplits } = burstisnessPass(text);
-  text = postProcess(t4b);
+  // First, determine global AI signal across the whole text so the structural
+  // gate is consistent for every paragraph (not re-evaluated per paragraph).
+  let globalSlop = 0, globalBloat = 0;
+  for (const para of paragraphs) {
+    globalSlop  += applyRules(para, SLOP_RULES).count;
+    globalBloat += applyRules(para, BLOAT_RULES).count;
+  }
+  const aiSignal = globalSlop + globalBloat;
+  const runStructural = aiSignal >= 3 || (aiSignal >= 1 && wordCount >= 150);
 
-  // Pass 5: structural sentence rewrites — attack AI sentence templates
-  const { text: t5s, count: rewriteCount } = structuralRewrite(text);
-  text = postProcess(t5s);
+  const cleanedParas = paragraphs.map(para => {
+    let text = para;
 
-  // Pass 6: humanize (structure + rhythm + intensifiers)
-  const { text: t6, intensifierCount, sentencesSplit } = humanize(text);
-  text = postProcess(t6);
+    // Pass 1: slop
+    const r1 = applyRules(text, SLOP_RULES);
+    slopCount += r1.count;
+    text = postProcess(r1.text);
+
+    // Pass 2: bloat
+    const r2 = applyRules(text, BLOAT_RULES);
+    bloatCount += r2.count;
+    text = postProcess(r2.text);
+
+    // Pass 3: contractions
+    const r3 = applyContractions(text);
+    contractionCount += r3.count;
+    text = postProcess(r3.text);
+
+    if (runStructural) {
+      // Pass 4: burstiness
+      const r4 = burstisnessPass(text);
+      text = postProcess(r4.text);
+      burstSplits += r4.splits;
+
+      // Pass 5: structural sentence rewrites
+      const r5 = structuralRewrite(text);
+      text = postProcess(r5.text);
+      rewriteCount += r5.count;
+
+      // Pass 6: humanize
+      const r6 = humanize(text);
+      text = postProcess(r6.text);
+      intensifierCount += r6.intensifierCount;
+      sentencesSplit += r6.sentencesSplit;
+    } else {
+      // Word-level only: strip intensifiers, no restructuring
+      text = text.replace(INTENSIFIER_RE, (match, word, offset, str) => {
+        const after = str.slice(offset + match.length, offset + match.length + 20);
+        if (/^(necessary|required|essential|impossible|certain|sure)\b/i.test(after)) return match;
+        intensifierCount++;
+        return '';
+      });
+      text = postProcess(text);
+    }
+
+    return text;
+  });
+
+  // Rejoin paragraphs, dropping any that became empty after cleaning.
+  const text = cleanedParas.join('\n\n').replace(/\n{3,}/g, '\n\n').trim();
 
   const totalSplits = sentencesSplit + burstSplits;
   return { cleaned: text, slopCount: slopCount + rewriteCount + bulletJoins, bloatCount, contractionCount, intensifierCount, sentencesSplit: totalSplits, formatStrips };
@@ -1972,64 +2034,60 @@ function diffTokens(oldText, newText) {
   return ops;
 }
 
+function renderWordDiff(oldLine, newLine) {
+  if (oldLine === newLine) return escapeHtml(newLine);
+  const ops = diffTokens(oldLine, newLine);
+  let html = '';
+  for (let j = 0; j < ops.length; j++) {
+    const lop = ops[j];
+    const lesc = escapeHtml(lop.val);
+    if (lop.type === 'eq')       html += lesc;
+    else if (lop.type === 'del') html += `<span class="diff-del">${lesc}</span>`;
+    else if (lop.type === 'ins') html += `<span class="diff-add">${lesc}</span>`;
+    if (j < ops.length - 1) {
+      const nextVal = ops[j+1]?.val || '';
+      if (!/^[.,!?;:)}\]'"»]/.test(nextVal)) html += ' ';
+    }
+  }
+  return html || escapeHtml(newLine);
+}
+
 function renderDiff(oldText, newText, showDiff) {
   if (!showDiff) {
-    // Preserve newlines as <br> in plain mode
     return escapeHtml(newText).replace(/\n/g, '<br>');
   }
 
-  const ops = diffTokens(oldText, newText);
-  let html = '';
+  const oldLines = oldText.split('\n');
+  const newLines = newText.split('\n');
 
-  for (let i = 0; i < ops.length; i++) {
-    const op = ops[i];
-    const next = ops[i + 1];
-    const esc = escapeHtml(op.val);
+  // LCS on lines to align old↔new before word-level diff.
+  // Required because sentence-split passes change the line count.
+  const ola = oldLines.map(l => l.trim().toLowerCase());
+  const nla = newLines.map(l => l.trim().toLowerCase());
+  const m = ola.length, n = nla.length;
+  const dp = new Array(m + 1).fill(null).map(() => new Uint16Array(n + 1));
+  for (let i = 1; i <= m; i++)
+    for (let j = 1; j <= n; j++)
+      dp[i][j] = ola[i-1] === nla[j-1]
+        ? dp[i-1][j-1] + 1
+        : Math.max(dp[i-1][j], dp[i][j-1]);
 
-    if (op.type === 'eq') {
-      html += esc;
-    } else if (op.type === 'del') {
-      html += `<span class="diff-del">${esc}</span>`;
-    } else if (op.type === 'ins') {
-      html += `<span class="diff-add">${esc}</span>`;
-    }
-
-    // After each word token, emit the original whitespace (preserving newlines as <br>)
-    // If next token exists and isn't punctuation, add a space; if it's a newline context, add <br>
-    if (i < ops.length - 1) {
-      const nextVal = ops[i+1]?.val || '';
-      if (!/^[.,!?;:)}\]'"»]/.test(nextVal)) {
-        html += ' ';
-      }
-    }
+  const common = [];
+  let i = m, j = n;
+  while (i > 0 && j > 0) {
+    if (ola[i-1] === nla[j-1]) { common.push([i-1, j-1]); i--; j--; }
+    else if (dp[i-1][j] >= dp[i][j-1]) i--;
+    else j--;
   }
+  common.reverse();
 
-  // If output has newlines, do line-by-line diff to preserve structure
-  if (newText.includes('\n')) {
-    const oldLines = oldText.split('\n');
-    const newLines = newText.split('\n');
-    return newLines.map((newLine, i) => {
-      const oldLine = oldLines[i] ?? '';
-      if (newLine === oldLine) return escapeHtml(newLine);
-      // Inline word-level diff per line
-      const lineOps = diffTokens(oldLine, newLine);
-      let lineHtml = '';
-      for (let j = 0; j < lineOps.length; j++) {
-        const lop = lineOps[j];
-        const lesc = escapeHtml(lop.val);
-        if (lop.type === 'eq')  lineHtml += lesc;
-        else if (lop.type === 'del') lineHtml += `<span class="diff-del">${lesc}</span>`;
-        else if (lop.type === 'ins') lineHtml += `<span class="diff-add">${lesc}</span>`;
-        if (j < lineOps.length - 1) {
-          const nextVal = lineOps[j+1]?.val || '';
-          if (!/^[.,!?;:)}\]'"»]/.test(nextVal)) lineHtml += ' ';
-        }
-      }
-      return lineHtml || escapeHtml(newLine);
-    }).join('<br>');
-  }
+  const oldMatch = new Map(common.map(([oi, ni]) => [ni, oi]));
 
-  return html;
+  return newLines.map((newLine, ni) => {
+    const oi = oldMatch.get(ni);
+    const oldLine = oi !== undefined ? oldLines[oi] : '';
+    return renderWordDiff(oldLine, newLine);
+  }).join('<br>');
 }
 
 // ═══════════════════════════════════════════════════════
